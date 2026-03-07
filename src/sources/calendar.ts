@@ -27,15 +27,9 @@ export async function getCalendarToday(): Promise<CalendarSignal | null> {
       return null;
     }
 
-    // Get today's events via gws
-    const today = new Date();
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
-
+    // Get today's events via gws calendar +agenda --today
     const result = execSync(
-      `gws calendar events list --timeMin="${startOfDay.toISOString()}" --timeMax="${endOfDay.toISOString()}" --format=json 2>/dev/null`,
+      `gws calendar +agenda --today --format json 2>/dev/null`,
       {
         encoding: "utf-8",
         timeout: 15000,
@@ -43,22 +37,63 @@ export async function getCalendarToday(): Promise<CalendarSignal | null> {
       }
     );
 
-    const data = JSON.parse(result);
-    const items = (data.items || data || []) as Array<{
+    let items: Array<{
       summary?: string;
-      start?: { dateTime?: string; date?: string };
-      end?: { dateTime?: string; date?: string };
+      title?: string;
+      start?: string | { dateTime?: string; date?: string };
+      end?: string | { dateTime?: string; date?: string };
+      startTime?: string;
+      endTime?: string;
     }>;
+
+    try {
+      const data = JSON.parse(result);
+      // gws may return array directly or nested in a field
+      items = Array.isArray(data) ? data : data.items || data.events || [];
+    } catch {
+      // Try parsing as NDJSON (one JSON object per line)
+      items = result
+        .trim()
+        .split("\n")
+        .filter((line) => line.trim())
+        .flatMap((line) => {
+          try {
+            const parsed = JSON.parse(line);
+            // Could be a wrapper with items array or a single event
+            if (Array.isArray(parsed)) return parsed;
+            if (parsed.items) return parsed.items;
+            if (parsed.events) return parsed.events;
+            return [parsed];
+          } catch {
+            return [];
+          }
+        });
+    }
 
     const now = Date.now();
 
     const events: CalendarEvent[] = items
-      .filter((item) => item.start?.dateTime) // skip all-day events
       .map((item) => {
-        const startTime = new Date(item.start!.dateTime!);
-        const endTime = new Date(item.end!.dateTime!);
+        // Handle various gws output formats
+        const startStr =
+          typeof item.start === "string"
+            ? item.start
+            : item.start?.dateTime || item.startTime;
+        const endStr =
+          typeof item.end === "string"
+            ? item.end
+            : item.end?.dateTime || item.endTime;
+        const title = item.summary || item.title || "Untitled event";
+
+        if (!startStr) return null;
+
+        const startTime = new Date(startStr);
+        const endTime = endStr ? new Date(endStr) : new Date(startTime.getTime() + 60 * 60 * 1000);
+
+        if (isNaN(startTime.getTime())) return null;
+
         return {
-          title: item.summary || "Untitled event",
+          title,
           startTime,
           endTime,
           minutesUntilStart: Math.round(
@@ -66,10 +101,11 @@ export async function getCalendarToday(): Promise<CalendarSignal | null> {
           ),
         };
       })
+      .filter((e): e is CalendarEvent => e !== null)
       .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
     // Calculate free blocks (between events, min 30 min)
-    const freeBlocks = calculateFreeBlocks(events, today);
+    const freeBlocks = calculateFreeBlocks(events, new Date());
 
     return { events, freeBlocks };
   } catch {
