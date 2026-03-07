@@ -112,7 +112,8 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     console.log(chalk.bold("  NOW"));
     console.log(chalk.dim("  ───"));
     for (const item of result.now) {
-      console.log(`  ${item.emoji} ${chalk.bold(item.label)}`);
+      const confTag = item.confidenceNote ? chalk.yellow(` (${item.confidenceNote})`) : "";
+      console.log(`  ${item.emoji} ${chalk.bold(item.label)}${confTag}`);
       console.log(`     ${chalk.dim(item.detail)}`);
       console.log(`     ${chalk.dim(`Why: ${item.reason}`)}`);
     }
@@ -124,7 +125,8 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     console.log(chalk.bold("  TODAY"));
     console.log(chalk.dim("  ────"));
     for (const item of result.today) {
-      console.log(`  ${item.emoji} ${chalk.bold(item.label)}`);
+      const confTag = item.confidenceNote ? chalk.yellow(` (${item.confidenceNote})`) : "";
+      console.log(`  ${item.emoji} ${chalk.bold(item.label)}${confTag}`);
       console.log(`     ${chalk.dim(item.detail)}`);
       console.log(`     ${chalk.dim(`Why: ${item.reason}`)}`);
     }
