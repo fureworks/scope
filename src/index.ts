@@ -7,6 +7,7 @@ import { contextCommand } from "./cli/context.js";
 import { statusCommand } from "./cli/status.js";
 import { onboardCommand } from "./cli/onboard.js";
 import { configCommand } from "./cli/config.js";
+import { notificationsCommand } from "./cli/notifications.js";
 import { daemonCommand } from "./cli/daemon.js";
 
 const program = new Command();
@@ -54,5 +55,12 @@ program
   .command("daemon <action>")
   .description("Manage background signal checks (start|stop|status)")
   .action(daemonCommand);
+
+program
+  .command("notifications")
+  .description("View recent notifications")
+  .option("--clear", "Clear all notifications")
+  .option("--all", "Show all notifications (not just last 24h)")
+  .action(notificationsCommand);
 
 program.parse();

@@ -15,13 +15,15 @@ function fallbackNotify(title: string, body: string): void {
 }
 
 export function notify(title: string, body: string): void {
+  // Always log to file (so scope notifications can show history)
+  fallbackNotify(title, body);
+
+  // Also fire desktop notification
   try {
     if (process.platform === "linux") {
       if (commandExists("notify-send")) {
-        const result = spawnSync("notify-send", [title, body], { stdio: "pipe" });
-        if (result.status === 0) return;
+        spawnSync("notify-send", [title, body], { stdio: "pipe" });
       }
-      fallbackNotify(title, body);
       return;
     }
 
@@ -29,14 +31,10 @@ export function notify(title: string, body: string): void {
       const escapedTitle = title.replace(/"/g, '\\"');
       const escapedBody = body.replace(/"/g, '\\"');
       const script = `display notification "${escapedBody}" with title "${escapedTitle}"`;
-      const result = spawnSync("osascript", ["-e", script], { stdio: "pipe" });
-      if (result.status === 0) return;
-      fallbackNotify(title, body);
+      spawnSync("osascript", ["-e", script], { stdio: "pipe" });
       return;
     }
-
-    fallbackNotify(title, body);
   } catch {
-    fallbackNotify(title, body);
+    // Desktop notification failed, but log was already written
   }
 }
