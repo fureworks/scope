@@ -242,7 +242,7 @@ function scoreIssue(issue: IssueSignal): CandidateItem {
     reason,
     source: "issue",
     suppressionReason:
-      priority === "later" && issue.ageDays < 7 && !hasPriorityLabel
+      priority === "later" && issue.ageDays < 7 && !priorityLabel
         ? "Less than a week old, no priority label"
         : undefined,
   };
