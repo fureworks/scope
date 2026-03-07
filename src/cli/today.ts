@@ -56,7 +56,7 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
   }
 
   // Prioritize
-  const result = prioritize(gitSignals, events, freeBlocks, issueScan.issues);
+  const result = prioritize(gitSignals, events, freeBlocks, issueScan.issues, config.weights);
 
   const timeContext = getTimeContext();
 
