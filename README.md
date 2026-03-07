@@ -1,14 +1,8 @@
 # Scope
 
-**Personal ops CLI — focus on what matters.**
+**Scope tells you the 3 things that matter right now — and gives you permission to ignore everything else.**
 
-Scope reads your existing workflow (git repos, calendar, PRs) and tells you what actually needs your attention. It doesn't add to your workflow — it gives you clarity.
-
-## Why
-
-AI tools made you more capable. Which means more gets piled on. The bottleneck moved from *execution* to *prioritization and context switching*.
-
-Scope sits above your tools and helps you focus.
+A personal ops CLI for builders who juggle multiple repos, PRs, meetings, and issues. Scope reads your existing workflow signals and surfaces what needs attention. No manual input. No new accounts. No cloud.
 
 ## Install
 
@@ -16,77 +10,164 @@ Scope sits above your tools and helps you focus.
 npm install -g @fureworks/scope
 ```
 
+Requires Node.js 18+.
+
 ## Quick Start
 
 ```bash
-scope onboard     # Guided setup (1 minute)
-scope today       # What matters right now
+scope onboard    # guided first-time setup
+scope today      # what matters right now
+scope review     # end-of-day summary
 ```
 
-## Commands
+Or set up non-interactively (great for AI agents):
 
-```
-scope onboard              Guided first-time setup
-scope today                What needs your attention right now
-scope status               Overview of all watched projects
-scope switch <project>     Switch to a project context
-scope context              Show current project context
-scope review               End-of-day summary
-scope config               View/edit configuration
+```bash
+scope init
+scope config repos add ~/projects/my-app ~/projects/api
+scope config repos scan ~/work     # auto-discover git repos
+scope config calendar enable
+scope config projects add myproject --dir ~/projects/my-app
 ```
 
-## How It Works
+## What It Does
 
-Scope reads signals from your existing tools:
+Scope reads signals from tools you already use:
 
-- **Git** — uncommitted changes, stale branches, open PRs
-- **Google Calendar** — today's meetings, free blocks (via [gws](https://github.com/googleworkspace/cli))
-- **GitHub** — PR reviews waiting on you, failing CI
+- **Git** — uncommitted work, stale branches, recent activity
+- **GitHub** — open PRs, review requests, CI status, assigned issues
+- **Google Calendar** — meetings, free blocks (via `gws` CLI)
 
-It scores each item by urgency, staleness, and blocking potential, then shows you what matters:
+Then it scores and ranks everything using deterministic rules (no AI):
 
 ```
 $ scope today
 
+  Good morning. Here's what matters:
+
   NOW
   ───
-  🔴 Meeting: Team standup in 45 min
-  🔴 PR #8 on api-service — waiting on your review (3 days)
+  🔴 PR #8 on api-service (low context: no CI status)
+     auth migration — review requested, 3 days old
+     Why: Someone's waiting on your review. 3 days stale.
 
   TODAY
   ────
-  🟡 fureworks/scope — 3 uncommitted files, last touched 2h ago
-  🟡 PR #12 on fureworks.com — open 3 days, no review
+  🟡 fureworks/scope
+     3 uncommitted files, last touched 6h ago
+     Why: Uncommitted work for 6 hours. Commit or stash.
 
-  💡 2h free block after standup (14:00–16:00)
-     Good for: fureworks/scope (has pending work)
+  IGNORED
+  ───────
+  ✗ PR #2 on docs — Fresh, no one's waiting
+  ✗ Issue #12 on scope — Less than a week old, no priority label
 
-  4 other items can wait → scope status
+  Nothing else needs you today.
 ```
 
-## Design Principles
+## Commands
 
-- **CLI-first, local-first** — your data stays on your machine
-- **Reads, doesn't create** — no new inputs required from you
-- **Opinionated output** — tells you what matters, not just lists stuff
-- **Degrades gracefully** — missing integrations skip quietly, never crash
-- **Open source** — MIT licensed
+| Command | What it does |
+|---------|-------------|
+| `scope today` | Morning priorities — what needs attention right now |
+| `scope review` | End-of-day summary — what got done, what's carrying over |
+| `scope plan` | Weekly view — calendar density, PR backlog, best build days |
+| `scope status` | Overview of all watched projects |
+| `scope switch <project>` | Context switch between projects |
+| `scope context` | Show current project state |
+| `scope snooze <item> --until <date>` | Hide an item until a date |
+| `scope mute <item>` | Permanently hide an item |
+| `scope tune [key] [value]` | Adjust scoring weights |
+| `scope config repos\|calendar\|projects` | Manage configuration |
+| `scope init` | Initialize Scope |
+| `scope onboard` | Interactive guided setup |
+| `scope daemon start\|stop\|status` | Background signal checks |
+| `scope notifications` | View recent alerts |
+
+## How Scoring Works
+
+Each item gets a priority score based on measurable signals:
+
+```
+Score = (Time Pressure + Staleness + Blocking Potential + Effort Match) × Weight
+```
+
+- **Score ≥ 8** → 🔴 **NOW** — do these first (max 3 shown)
+- **Score 4–7** → 🟡 **TODAY** — fit these in (max 5 shown)
+- **Score < 4** → **IGNORED** — shown with reason, explicitly excluded
+
+Adjust weights with `scope tune`:
+
+```bash
+scope tune staleness 1.5   # stale items rank higher
+scope tune blocking 0.5    # reduce blocking urgency
+scope tune --reset          # restore defaults
+```
+
+## Time Awareness
+
+`scope today` adjusts its tone based on when you run it:
+
+- **Morning:** "Good morning. Here's what matters."
+- **Afternoon:** "3/5 from this morning done. 2 remaining."
+- **Evening:** "Run `scope review` to wrap up."
+
+## Weekly Planning
+
+```
+$ scope plan
+
+  THIS WEEK
+  ─────────
+  Mon  ████░░ 3 meetings, 2h free
+  Tue  ██░░░░ 1 meeting, 5h free ← best deep work day
+  Wed  █████░ 4 meetings, 1h free
+  Thu  ███░░░ 2 meetings, 4h free
+  Fri  █░░░░░ 0 meetings, 7h free
+
+  BACKLOG
+  ───────
+  3 PRs older than 1 week
+  2 issues approaching stale (>14 days)
+
+  💡 Tuesday + Friday are your best build days this week.
+```
 
 ## Prerequisites
 
-- Node.js 18+
-- Git
-- [GitHub CLI](https://cli.github.com/) (`gh`) — for PR data
-- [Google Workspace CLI](https://github.com/googleworkspace/cli) (`gws`) — for calendar (optional)
+Scope reads from external tools. All are optional — missing integrations reduce output but never crash.
 
-## Status
+| Tool | What it provides | Install |
+|------|-----------------|---------|
+| `gh` (GitHub CLI) | PRs, issues, CI status | [cli.github.com](https://cli.github.com/) |
+| `gws` (Google Workspace CLI) | Calendar events, free blocks | `npm i -g @anthropic-ai/gws` |
 
-🚧 **v0.1 in development** — early but usable.
+## Best Practices
+
+See [WORKFLOW.md](./WORKFLOW.md) for habits that make Scope's output better — commit often, assign yourself, use labels, block focus time.
+
+## Philosophy
+
+- **Zero manual input.** Scope reads. It doesn't ask you to enter data.
+- **Confident exclusion.** The value isn't what's shown — it's what's hidden and why.
+- **Degraded mode is fine.** Only have git? Scope works. Add calendar? Better. Each integration is additive.
+- **CLI-first, local-first.** No accounts, no cloud, no tracking.
+- **No AI (v1).** Deterministic rules-based scoring. Transparent and predictable.
+
+## Data
+
+Everything lives in `~/.scope/`:
+
+```
+~/.scope/
+├── config.toml          # configuration
+├── contexts/            # saved project contexts
+├── snapshots/           # daily snapshots (for review comparison)
+├── muted.json           # snoozed/muted items
+├── notifications.log    # notification history
+└── daemon.pid           # background process
+```
 
 ## License
 
-MIT — see [LICENSE](./LICENSE)
-
----
-
-*A [Fureworks](https://fureworks.com) project — works born from human touch.*
+MIT — [Fureworks](https://fureworks.com)
