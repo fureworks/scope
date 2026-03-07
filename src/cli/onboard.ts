@@ -259,54 +259,65 @@ export async function onboardCommand(): Promise<void> {
     console.log(chalk.dim("  Enable later with 'scope config calendar'\n"));
   }
 
-  // Step 4: First project
+  // Step 4: Projects — group repos under names
   console.log(chalk.bold("  Step 4/4: Projects"));
   console.log(chalk.dim("  ─────────────────────"));
-  console.log(chalk.dim("  Projects group your repos under a name for context switching.\n"));
+  console.log(chalk.dim("  Projects group your repos for context switching."));
+  console.log(chalk.dim("  e.g. 'wtl' = your work repos, 'personal' = side projects\n"));
 
-  const projectName = await ask(rl, "  ? Name your first project: ");
-  if (projectName) {
-    // If there are watched repos, let them pick one as the project path
-    if (config.repos.length > 0) {
-      if (config.repos.length === 1) {
-        // Only one repo — use it automatically
-        config.projects[projectName] = { path: config.repos[0] };
-        console.log(
-          chalk.green(`\n  ✓ Project "${projectName}" → ${config.repos[0]}\n`)
-        );
-      } else {
-        // Multiple repos — let them pick
-        console.log(chalk.dim("\n    Which repo is the main one for this project?\n"));
-        config.repos.forEach((r, i) => {
-          console.log(chalk.dim(`    ${i + 1}) ${r}`));
-        });
-        const pick = await ask(rl, "\n  ? Select (number): ");
-        const idx = parseInt(pick, 10) - 1;
-        if (idx >= 0 && idx < config.repos.length) {
-          config.projects[projectName] = { path: config.repos[idx] };
-          console.log(
-            chalk.green(`\n  ✓ Project "${projectName}" → ${config.repos[idx]}\n`)
-          );
-        } else {
-          config.projects[projectName] = { path: config.repos[0] };
-          console.log(
-            chalk.green(`\n  ✓ Project "${projectName}" → ${config.repos[0]}\n`)
-          );
-        }
+  if (config.repos.length > 0) {
+    let assigningProjects = true;
+    const unassigned = [...config.repos];
+
+    while (assigningProjects && unassigned.length > 0) {
+      const projectName = await ask(rl, "  ? Project name (or 'done'): ");
+      
+      if (projectName.toLowerCase() === "done" || projectName === "") {
+        assigningProjects = false;
+        continue;
       }
-    } else {
-      const projectPath = await ask(
-        rl,
-        `  ? Path to project directory: `
-      );
-      const resolvedPath = resolve(
-        (projectPath || ".").replace(/^~/, process.env.HOME || "~")
-      );
-      config.projects[projectName] = { path: resolvedPath };
-      console.log(
-        chalk.green(`\n  ✓ Project "${projectName}" → ${resolvedPath}\n`)
-      );
+
+      console.log(chalk.dim("\n    Which repos belong to this project?\n"));
+      unassigned.forEach((r, i) => {
+        const name = r.split("/").slice(-2).join("/");
+        console.log(chalk.dim(`    ${i + 1}) ${name}`));
+      });
+      console.log(chalk.dim(`\n    Enter numbers (e.g. 1,3,5), 'all', or 'none'`));
+
+      const pick = await ask(rl, "  ? Select: ");
+      const trimmed = pick.trim().toLowerCase();
+      
+      let selectedPaths: string[] = [];
+      if (trimmed === "all") {
+        selectedPaths = [...unassigned];
+      } else if (trimmed === "none" || trimmed === "") {
+        // skip
+      } else {
+        const indices = trimmed
+          .split(",")
+          .map((s) => parseInt(s.trim(), 10) - 1)
+          .filter((i) => i >= 0 && i < unassigned.length);
+        selectedPaths = indices.map((i) => unassigned[i]);
+      }
+
+      if (selectedPaths.length > 0) {
+        config.projects[projectName] = { path: selectedPaths[0], repos: selectedPaths };
+        // Remove assigned repos from unassigned
+        for (const p of selectedPaths) {
+          const idx = unassigned.indexOf(p);
+          if (idx !== -1) unassigned.splice(idx, 1);
+        }
+        console.log(
+          chalk.green(`\n  ✓ Project "${projectName}" — ${selectedPaths.length} repo${selectedPaths.length !== 1 ? "s" : ""}\n`)
+        );
+      }
+
+      if (unassigned.length > 0) {
+        console.log(chalk.dim(`  ${unassigned.length} repo${unassigned.length !== 1 ? "s" : ""} unassigned. Add another project or 'done'.\n`));
+      }
     }
+  } else {
+    console.log(chalk.dim("  No repos to group. Add projects later with 'scope config projects'\n"));
   }
 
   // Save

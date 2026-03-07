@@ -9,6 +9,7 @@ export interface ScopeConfig {
     string,
     {
       path: string;
+      repos?: string[];
       description?: string;
     }
   >;
@@ -77,6 +78,9 @@ export function saveConfig(config: ScopeConfig): void {
   for (const [name, project] of Object.entries(config.projects)) {
     lines.push(`[projects.${name}]`);
     lines.push(`path = "${project.path}"`);
+    if (project.repos && project.repos.length > 0) {
+      lines.push(`repos = [${project.repos.map((r) => `"${r}"`).join(", ")}]`);
+    }
     if (project.description) {
       lines.push(`description = "${project.description}"`);
     }
