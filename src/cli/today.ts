@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import { loadConfig, configExists } from "../store/config.js";
-import { saveSnapshot } from "../store/snapshot.js";
+import { getTimeContext, loadSnapshot, saveSnapshot } from "../store/snapshot.js";
 import { scanAllRepos } from "../sources/git.js";
 import { getCalendarToday } from "../sources/calendar.js";
 import { scanAssignedIssues } from "../sources/issues.js";
@@ -58,8 +58,17 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
   // Prioritize
   const result = prioritize(gitSignals, events, freeBlocks, issueScan.issues);
 
-  // Save snapshot for scope review
-  saveSnapshot(result.now, result.today);
+  const timeContext = getTimeContext();
+
+  // Save a morning snapshot for scope review/progress checks.
+  if (timeContext === "morning") {
+    saveSnapshot(result.now, result.today);
+  }
+
+  const snapshot =
+    timeContext === "midday" || timeContext === "afternoon"
+      ? loadSnapshot()
+      : null;
 
   // Output
   if (options.json) {
@@ -68,6 +77,35 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
   }
 
   console.log("");
+
+  if (result.now.length === 0 && result.today.length === 0) {
+    if (timeContext === "evening") {
+      console.log("  Day's winding down. Run `scope review` to wrap up.\n");
+    } else {
+      console.log(chalk.green("  ✓ Nothing urgent. You're clear.\n"));
+    }
+
+    // Show ignored items even when nothing is urgent
+    if (result.ignored.length > 0) {
+      console.log(chalk.bold("  IGNORED"));
+      console.log(chalk.dim("  ───────"));
+      const shown = result.ignored.slice(0, 10);
+      for (const item of shown) {
+        console.log(chalk.dim(`  ✗ ${item.label} — ${item.reason}`));
+      }
+      if (result.ignored.length > shown.length) {
+        console.log(chalk.dim(`  and ${result.ignored.length - shown.length} more`));
+      }
+      console.log("");
+    }
+
+    console.log(chalk.dim("  Nothing else needs you today.\n"));
+    return;
+  }
+
+  if (timeContext === "morning") {
+    console.log("  Good morning. Here's what matters:\n");
+  }
 
   // NOW section
   if (result.now.length > 0) {
@@ -119,10 +157,26 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     console.log("");
   }
 
-  // Later count
-  if (result.ignored.length > 0) {
-    console.log(
-      chalk.dim(`  ${result.ignored.length} other items can wait → scope status\n`)
+  // Temporal context: progress tracking
+  if (timeContext === "midday" && snapshot) {
+    const total = snapshot.now.length + snapshot.today.length;
+    console.log(`  You had ${total} items this morning. Check back later to see progress.\n`);
+  }
+
+  if (timeContext === "afternoon" && snapshot) {
+    const morningItems = [...snapshot.now, ...snapshot.today];
+    const currentKeys = new Set(
+      [...result.now, ...result.today].map((item) => `${item.source}|${item.label}|${item.detail}`)
     );
+    const left = morningItems.filter((item) =>
+      currentKeys.has(`${item.source}|${item.label}|${item.detail}`)
+    ).length;
+    const total = morningItems.length;
+    const done = total - left;
+    console.log(`  ${done}/${total} from this morning done. ${left} remaining.\n`);
+  }
+
+  if (timeContext === "evening" && result.now.length > 0) {
+    console.log("  Late day — consider if these can wait until tomorrow.\n");
   }
 }
