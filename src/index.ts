@@ -6,12 +6,13 @@ import { switchCommand } from "./cli/switch.js";
 import { contextCommand } from "./cli/context.js";
 import { statusCommand } from "./cli/status.js";
 import { onboardCommand } from "./cli/onboard.js";
-import { configCommand } from "./cli/config.js";
+import { registerConfigCommand } from "./cli/config.js";
 import { reviewCommand } from "./cli/review.js";
 import { notificationsCommand } from "./cli/notifications.js";
 import { daemonCommand } from "./cli/daemon.js";
 import { muteCommand, snoozeCommand } from "./cli/snooze.js";
 import { planCommand } from "./cli/plan.js";
+import { initCommand } from "./cli/init.js";
 
 const program = new Command();
 
@@ -19,6 +20,11 @@ program
   .name("scope")
   .description("Personal ops CLI — focus on what matters.")
   .version("0.1.0");
+
+program
+  .command("init")
+  .description("Initialize Scope (create ~/.scope/ and config)")
+  .action(initCommand);
 
 program
   .command("today")
@@ -55,10 +61,8 @@ program
   .option("--json", "Output as JSON")
   .action(reviewCommand);
 
-program
-  .command("config [key] [value]")
-  .description("View or edit configuration")
-  .action(configCommand);
+// Config subcommands (repos, calendar, github, projects)
+registerConfigCommand(program);
 
 program
   .command("daemon <action>")
