@@ -17,12 +17,17 @@ export interface ScoredItem {
 export interface PrioritizedOutput {
   now: ScoredItem[];
   today: ScoredItem[];
-  laterCount: number;
+  ignored: Array<{ label: string; reason: string }>;
+  readonly laterCount: number;
   freeBlocks: FreeBlock[];
   suggestions: string[];
 }
 
-function scorePR(pr: PRInfo, repoName: string): ScoredItem {
+interface CandidateItem extends ScoredItem {
+  suppressionReason?: string;
+}
+
+function scorePR(pr: PRInfo, repoName: string): CandidateItem {
   let score = 0;
   const details: string[] = [];
   const ageDaysRounded = Math.round(pr.ageDays);
@@ -82,6 +87,15 @@ function scorePR(pr: PRInfo, repoName: string): ScoredItem {
 
   const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
 
+  const suppressionReason =
+    priority === "later"
+      ? pr.ageDays <= 2 && !pr.reviewRequested
+        ? "Fresh, no one's waiting"
+        : pr.ciStatus === "pass"
+          ? "On track, CI green"
+          : undefined
+      : undefined;
+
   return {
     priority,
     score,
@@ -90,10 +104,11 @@ function scorePR(pr: PRInfo, repoName: string): ScoredItem {
     detail: `${pr.title} — ${details.join(", ")}`,
     reason,
     source: "pr",
+    suppressionReason,
   };
 }
 
-function scoreRepoWork(signal: GitSignal): ScoredItem | null {
+function scoreRepoWork(signal: GitSignal): CandidateItem | null {
   if (signal.uncommittedFiles === 0) return null;
 
   let score = 0;
@@ -123,8 +138,6 @@ function scoreRepoWork(signal: GitSignal): ScoredItem | null {
     score += 1;
   }
 
-  if (score < 2) return null; // Don't surface fresh uncommitted work
-
   const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
 
   return {
@@ -135,6 +148,8 @@ function scoreRepoWork(signal: GitSignal): ScoredItem | null {
     detail: details.join(", "),
     reason,
     source: "git",
+    suppressionReason:
+      priority === "later" ? "Recently touched, nothing stale" : undefined,
   };
 }
 
@@ -180,7 +195,7 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
   };
 }
 
-function scoreIssue(issue: IssueSignal): ScoredItem | null {
+function scoreIssue(issue: IssueSignal): CandidateItem {
   let score = 0;
   const details: string[] = [];
   const ageDaysRounded = Math.round(issue.ageDays);
@@ -205,8 +220,6 @@ function scoreIssue(issue: IssueSignal): ScoredItem | null {
     details.push("priority label");
   }
 
-  if (score === 0) return null;
-
   const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
   const labels = issue.labels.length > 0 ? ` [${issue.labels.join(", ")}]` : "";
   let reason = "Assigned issue needs attention.";
@@ -228,6 +241,10 @@ function scoreIssue(issue: IssueSignal): ScoredItem | null {
     detail: `${issue.title}${labels}${details.length > 0 ? ` — ${details.join(", ")}` : ""}`,
     reason,
     source: "issue",
+    suppressionReason:
+      priority === "later" && issue.ageDays < 7 && !hasPriorityLabel
+        ? "Less than a week old, no priority label"
+        : undefined,
   };
 }
 
@@ -237,7 +254,7 @@ export function prioritize(
   freeBlocks: FreeBlock[],
   issues: IssueSignal[]
 ): PrioritizedOutput {
-  const allItems: ScoredItem[] = [];
+  const allItems: CandidateItem[] = [];
 
   // Score calendar events
   for (const event of calendarEvents) {
@@ -274,9 +291,17 @@ export function prioritize(
   const now = allNow.slice(0, 3);
   const todayOverflow = allNow.slice(3);
   const today = [...todayOverflow, ...allToday].slice(0, 5);
-  const laterCount =
-    allLater.length +
-    Math.max(0, todayOverflow.length + allToday.length - 5);
+  const capped = [...todayOverflow, ...allToday].slice(5);
+  const ignored = [
+    ...allLater.map((item) => ({
+      label: item.label,
+      reason: item.suppressionReason ?? "Lower priority than your top items",
+    })),
+    ...capped.map((item) => ({
+      label: item.label,
+      reason: "Lower priority than your top items",
+    })),
+  ];
 
   // Generate suggestions
   const suggestions: string[] = [];
@@ -309,5 +334,14 @@ export function prioritize(
     }
   }
 
-  return { now, today, laterCount, freeBlocks, suggestions };
+  return {
+    now,
+    today,
+    ignored,
+    get laterCount() {
+      return this.ignored.length;
+    },
+    freeBlocks,
+    suggestions,
+  };
 }

@@ -69,16 +69,6 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
 
   console.log("");
 
-  if (result.now.length === 0 && result.today.length === 0) {
-    console.log(chalk.green("  ✓ Nothing urgent. You're clear.\n"));
-    if (result.laterCount > 0) {
-      console.log(
-        chalk.dim(`  ${result.laterCount} low-priority items → scope status\n`)
-      );
-    }
-    return;
-  }
-
   // NOW section
   if (result.now.length > 0) {
     console.log(chalk.bold("  NOW"));
@@ -103,6 +93,24 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     console.log("");
   }
 
+  // IGNORED section
+  if (result.ignored.length > 0) {
+    console.log(chalk.bold("  IGNORED"));
+    console.log(chalk.dim("  ───────"));
+    const shown = result.ignored.slice(0, 10);
+    for (const item of shown) {
+      console.log(chalk.dim(`  ✗ ${item.label} — ${item.reason}`));
+    }
+    if (result.ignored.length > shown.length) {
+      console.log(chalk.dim(`  and ${result.ignored.length - shown.length} more`));
+    }
+    console.log("");
+  }
+
+  if (result.now.length === 0) {
+    console.log(chalk.dim("  Nothing else needs you today.\n"));
+  }
+
   // Suggestions
   if (result.suggestions.length > 0) {
     for (const suggestion of result.suggestions) {
@@ -112,9 +120,9 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
   }
 
   // Later count
-  if (result.laterCount > 0) {
+  if (result.ignored.length > 0) {
     console.log(
-      chalk.dim(`  ${result.laterCount} other items can wait → scope status\n`)
+      chalk.dim(`  ${result.ignored.length} other items can wait → scope status\n`)
     );
   }
 }
