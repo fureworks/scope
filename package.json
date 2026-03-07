@@ -1,0 +1,45 @@
+{
+  "name": "@fureworks/scope",
+  "version": "0.1.0",
+  "description": "Personal ops CLI — focus on what matters",
+  "type": "module",
+  "bin": {
+    "scope": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint src/",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "cli",
+    "productivity",
+    "ops",
+    "focus",
+    "prioritization",
+    "git",
+    "calendar"
+  ],
+  "author": "Fureworks <info@fureworks.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fureworks/scope.git"
+  },
+  "homepage": "https://fureworks.com",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "chalk": "^5.4.0",
+    "commander": "^13.1.0",
+    "simple-git": "^3.27.0",
+    "toml": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
