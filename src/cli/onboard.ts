@@ -27,40 +27,47 @@ function findGitRepos(): { path: string; name: string }[] {
   const home = homedir();
   const repos: { path: string; name: string }[] = [];
 
-  // Common directories where developers keep repos
-  const searchDirs = [
-    join(home, "projects"),
-    join(home, "Projects"),
-    join(home, "repos"),
-    join(home, "Repos"),
-    join(home, "src"),
-    join(home, "code"),
-    join(home, "Code"),
-    join(home, "dev"),
-    join(home, "Dev"),
-    join(home, "work"),
-    join(home, "Work"),
-    join(home, "Personal"),
-    join(home, "personal"),
-    join(home, "github"),
-    join(home, "GitHub"),
-    join(home, "Desktop"),
-    join(home, "Documents"),
-  ];
+  // Scan all top-level directories in home for git repos (1-2 levels deep)
+  const searchRoots: string[] = [home];
 
-  for (const dir of searchDirs) {
-    if (!existsSync(dir)) continue;
+  // Collect all immediate subdirectories of home as potential search roots
+  try {
+    const homeEntries = readdirSync(home);
+    for (const entry of homeEntries) {
+      if (entry.startsWith(".")) continue; // Skip dotfiles/dirs
+      const fullPath = join(home, entry);
+      try {
+        if (statSync(fullPath).isDirectory()) {
+          // Check if this dir itself is a repo
+          if (existsSync(join(fullPath, ".git"))) {
+            repos.push({ path: fullPath, name: entry });
+          } else {
+            // Search one level deeper inside this directory
+            searchRoots.push(fullPath);
+          }
+        }
+      } catch {
+        // Skip permission errors
+      }
+    }
+  } catch {
+    // Skip if home is inaccessible
+  }
 
+  // Scan each search root (one level deep)
+  for (const dir of searchRoots) {
+    if (dir === home) continue; // Already scanned top-level
     try {
       const entries = readdirSync(dir);
       for (const entry of entries) {
+        if (entry.startsWith(".")) continue;
         const fullPath = join(dir, entry);
         try {
           if (
             statSync(fullPath).isDirectory() &&
             existsSync(join(fullPath, ".git"))
           ) {
-            repos.push({ path: fullPath, name: entry });
+            repos.push({ path: fullPath, name: `${basename(dir)}/${entry}` });
           }
         } catch {
           // Skip permission errors
