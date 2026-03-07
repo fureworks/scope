@@ -13,6 +13,8 @@ export interface ScoredItem {
   label: string;
   detail: string;
   reason: string;
+  confidence: "high" | "medium" | "low";
+  confidenceNote?: string;
   source: "git" | "calendar" | "pr" | "issue";
 }
 
@@ -98,6 +100,12 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
           : undefined
       : undefined;
 
+  // Confidence: check for thin data
+  const missingContext: string[] = [];
+  if (pr.ciStatus === "unknown") missingContext.push("no CI status");
+  if (!pr.reviewRequested && pr.ageDays > 2) missingContext.push("no reviewer assigned");
+  const confidence: ScoredItem["confidence"] = missingContext.length >= 2 ? "low" : missingContext.length === 1 ? "medium" : "high";
+
   return {
     priority,
     score,
@@ -105,6 +113,8 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
     label: `PR #${pr.number} on ${repoName}`,
     detail: `${pr.title} — ${details.join(", ")}`,
     reason,
+    confidence,
+    confidenceNote: missingContext.length > 0 ? `low context: ${missingContext.join(", ")}` : undefined,
     source: "pr",
     suppressionReason,
   };
@@ -149,6 +159,7 @@ function scoreRepoWork(signal: GitSignal): CandidateItem | null {
     label: `${signal.repo}`,
     detail: details.join(", "),
     reason,
+    confidence: "high" as const, // git signals are always concrete
     source: "git",
     suppressionReason:
       priority === "later" ? "Recently touched, nothing stale" : undefined,
@@ -193,6 +204,7 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
     label: `Meeting: ${event.title}`,
     detail: timeLabel,
     reason,
+    confidence: "high" as const, // calendar events are factual
     source: "calendar",
   };
 }
@@ -235,6 +247,11 @@ function scoreIssue(issue: IssueSignal): CandidateItem {
     reason = `Marked ${priorityLabel}. Assigned to you.`;
   }
 
+  // Confidence: issues missing labels or with no assignee context
+  const issueMissing: string[] = [];
+  if (issue.labels.length === 0) issueMissing.push("no labels");
+  const issueConfidence: ScoredItem["confidence"] = issueMissing.length > 0 ? "medium" : "high";
+
   return {
     priority,
     score,
@@ -242,6 +259,8 @@ function scoreIssue(issue: IssueSignal): CandidateItem {
     label: `Issue #${issue.number} on ${issue.repo}`,
     detail: `${issue.title}${labels}${details.length > 0 ? ` — ${details.join(", ")}` : ""}`,
     reason,
+    confidence: issueConfidence,
+    confidenceNote: issueMissing.length > 0 ? `low context: ${issueMissing.join(", ")}` : undefined,
     source: "issue",
     suppressionReason:
       priority === "later" && issue.ageDays < 7 && !priorityLabel
