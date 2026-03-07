@@ -17,6 +17,16 @@ export interface DaySnapshot {
   today: ScoredItem[];
 }
 
+export type TimeContext = "morning" | "midday" | "afternoon" | "evening";
+
+export function getTimeContext(date: Date = new Date()): TimeContext {
+  const hour = date.getHours();
+  if (hour < 12) return "morning";
+  if (hour < 14) return "midday";
+  if (hour <= 17) return "afternoon";
+  return "evening";
+}
+
 export function saveSnapshot(now: ScoredItem[], today: ScoredItem[]): void {
   mkdirSync(SNAPSHOTS_DIR, { recursive: true });
   const snapshot: DaySnapshot = {
