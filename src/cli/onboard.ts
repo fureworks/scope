@@ -262,20 +262,51 @@ export async function onboardCommand(): Promise<void> {
   // Step 4: First project
   console.log(chalk.bold("  Step 4/4: Projects"));
   console.log(chalk.dim("  ─────────────────────"));
+  console.log(chalk.dim("  Projects group your repos under a name for context switching.\n"));
 
   const projectName = await ask(rl, "  ? Name your first project: ");
   if (projectName) {
-    const projectPath = await ask(
-      rl,
-      `  ? Working directory for '${projectName}': `
-    );
-    const resolvedPath = resolve(
-      (projectPath || ".").replace(/^~/, process.env.HOME || "~")
-    );
-    config.projects[projectName] = { path: resolvedPath };
-    console.log(
-      chalk.green(`\n  ✓ Project "${projectName}" created\n`)
-    );
+    // If there are watched repos, let them pick one as the project path
+    if (config.repos.length > 0) {
+      if (config.repos.length === 1) {
+        // Only one repo — use it automatically
+        config.projects[projectName] = { path: config.repos[0] };
+        console.log(
+          chalk.green(`\n  ✓ Project "${projectName}" → ${config.repos[0]}\n`)
+        );
+      } else {
+        // Multiple repos — let them pick
+        console.log(chalk.dim("\n    Which repo is the main one for this project?\n"));
+        config.repos.forEach((r, i) => {
+          console.log(chalk.dim(`    ${i + 1}) ${r}`));
+        });
+        const pick = await ask(rl, "\n  ? Select (number): ");
+        const idx = parseInt(pick, 10) - 1;
+        if (idx >= 0 && idx < config.repos.length) {
+          config.projects[projectName] = { path: config.repos[idx] };
+          console.log(
+            chalk.green(`\n  ✓ Project "${projectName}" → ${config.repos[idx]}\n`)
+          );
+        } else {
+          config.projects[projectName] = { path: config.repos[0] };
+          console.log(
+            chalk.green(`\n  ✓ Project "${projectName}" → ${config.repos[0]}\n`)
+          );
+        }
+      }
+    } else {
+      const projectPath = await ask(
+        rl,
+        `  ? Path to project directory: `
+      );
+      const resolvedPath = resolve(
+        (projectPath || ".").replace(/^~/, process.env.HOME || "~")
+      );
+      config.projects[projectName] = { path: resolvedPath };
+      console.log(
+        chalk.green(`\n  ✓ Project "${projectName}" → ${resolvedPath}\n`)
+      );
+    }
   }
 
   // Save
