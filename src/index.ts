@@ -10,6 +10,7 @@ import { configCommand } from "./cli/config.js";
 import { reviewCommand } from "./cli/review.js";
 import { notificationsCommand } from "./cli/notifications.js";
 import { daemonCommand } from "./cli/daemon.js";
+import { muteCommand, snoozeCommand } from "./cli/snooze.js";
 
 const program = new Command();
 
@@ -69,5 +70,21 @@ program
   .option("--clear", "Clear all notifications")
   .option("--all", "Show all notifications (not just last 24h)")
   .action(notificationsCommand);
+
+program
+  .command("snooze <item>")
+  .description("Snooze an item until a future date")
+  .requiredOption(
+    "--until <date>",
+    "Until date: tomorrow, monday..sunday, 3d, 1w, or YYYY-MM-DD"
+  )
+  .action(snoozeCommand);
+
+program
+  .command("mute [item]")
+  .description("Mute an item permanently, list mutes, or clear an item")
+  .option("--list", "Show muted and snoozed items")
+  .option("--clear <item-id>", "Remove an item from muted/snoozed")
+  .action(muteCommand);
 
 program.parse();
