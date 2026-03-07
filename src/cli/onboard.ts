@@ -265,7 +265,7 @@ export async function onboardCommand(): Promise<void> {
   console.log(chalk.bold("  Step 4/4: Projects"));
   console.log(chalk.dim("  ─────────────────────"));
   console.log(chalk.dim("  Projects group your repos for context switching."));
-  console.log(chalk.dim("  e.g. 'wtl' = your work repos, 'personal' = side projects\n"));
+  console.log(chalk.dim("  e.g. 'work' = your work repos, 'personal' = side projects\n"));
 
   if (config.repos.length > 0) {
     let assigningProjects = true;
