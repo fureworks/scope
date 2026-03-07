@@ -86,6 +86,7 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     for (const item of result.now) {
       console.log(`  ${item.emoji} ${chalk.bold(item.label)}`);
       console.log(`     ${chalk.dim(item.detail)}`);
+      console.log(`     ${chalk.dim(`Why: ${item.reason}`)}`);
     }
     console.log("");
   }
@@ -97,6 +98,7 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     for (const item of result.today) {
       console.log(`  ${item.emoji} ${chalk.bold(item.label)}`);
       console.log(`     ${chalk.dim(item.detail)}`);
+      console.log(`     ${chalk.dim(`Why: ${item.reason}`)}`);
     }
     console.log("");
   }

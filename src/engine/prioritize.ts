@@ -10,6 +10,7 @@ export interface ScoredItem {
   emoji: string;
   label: string;
   detail: string;
+  reason: string;
   source: "git" | "calendar" | "pr" | "issue";
 }
 
@@ -24,31 +25,59 @@ export interface PrioritizedOutput {
 function scorePR(pr: PRInfo, repoName: string): ScoredItem {
   let score = 0;
   const details: string[] = [];
+  const ageDaysRounded = Math.round(pr.ageDays);
+  let agePoints = 0;
 
   // Staleness
   if (pr.ageDays > 14) {
-    score += 9; // 2+ weeks = critical
-    details.push(`open ${Math.round(pr.ageDays)} days`);
+    agePoints = 9; // 2+ weeks = critical
+    score += agePoints;
+    details.push(`open ${ageDaysRounded} days`);
   } else if (pr.ageDays > 5) {
-    score += 7;
-    details.push(`open ${Math.round(pr.ageDays)} days`);
+    agePoints = 7;
+    score += agePoints;
+    details.push(`open ${ageDaysRounded} days`);
   } else if (pr.ageDays > 2) {
-    score += 4;
-    details.push(`open ${Math.round(pr.ageDays)} days`);
+    agePoints = 4;
+    score += agePoints;
+    details.push(`open ${ageDaysRounded} days`);
   }
 
   // Blocking potential
+  const reviewPoints = pr.reviewRequested ? 8 : 0;
+  const ciPoints = pr.ciStatus === "fail" ? 5 : 0;
+  const conflictPoints = pr.hasConflicts ? 4 : 0;
+
   if (pr.reviewRequested) {
-    score += 8;
+    score += reviewPoints;
     details.push("review requested");
   }
   if (pr.ciStatus === "fail") {
-    score += 5;
+    score += ciPoints;
     details.push("CI failing");
   }
   if (pr.hasConflicts) {
-    score += 4;
+    score += conflictPoints;
     details.push("has conflicts");
+  }
+
+  let reason = "Needs attention.";
+  if (reviewPoints > agePoints && reviewPoints >= ciPoints && reviewPoints >= conflictPoints) {
+    if (pr.ageDays > 5) {
+      reason = `Someone's waiting on your review. ${ageDaysRounded} days stale.`;
+    } else {
+      reason = "Someone's waiting on your review.";
+    }
+  } else if (agePoints >= reviewPoints && agePoints >= ciPoints && agePoints >= conflictPoints) {
+    if (pr.ageDays > 14) {
+      reason = `Open ${ageDaysRounded} days. Getting stale.`;
+    } else {
+      reason = `Open ${ageDaysRounded} days.`;
+    }
+  } else if (ciPoints >= conflictPoints) {
+    reason = "CI is failing. Fix or close.";
+  } else if (conflictPoints > 0) {
+    reason = "Merge conflicts detected. Rebase or close.";
   }
 
   const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
@@ -59,6 +88,7 @@ function scorePR(pr: PRInfo, repoName: string): ScoredItem {
     emoji: priority === "now" ? "🔴" : "🟡",
     label: `PR #${pr.number} on ${repoName}`,
     detail: `${pr.title} — ${details.join(", ")}`,
+    reason,
     source: "pr",
   };
 }
@@ -75,15 +105,20 @@ function scoreRepoWork(signal: GitSignal): ScoredItem | null {
 
   // Staleness of uncommitted work
   const days = Math.round(signal.lastCommitAge / 24);
+  let reason = "Uncommitted changes detected.";
   if (signal.lastCommitAge > 72) {
     score += 9; // 3+ days uncommitted = NOW
     details.push(`last commit ${days}d ago`);
+    reason = `Uncommitted work for ${days} days. Commit or stash.`;
   } else if (signal.lastCommitAge > 24) {
     score += 6;
     details.push(`last commit ${days}d ago`);
+    reason = `Uncommitted work for ${days} days. Commit or stash.`;
   } else if (signal.lastCommitAge > 4) {
+    const hours = Math.round(signal.lastCommitAge);
     score += 3;
-    details.push(`last touched ${Math.round(signal.lastCommitAge)}h ago`);
+    details.push(`last touched ${hours}h ago`);
+    reason = `Uncommitted work for ${hours} hours. Commit or stash.`;
   } else {
     score += 1;
   }
@@ -98,6 +133,7 @@ function scoreRepoWork(signal: GitSignal): ScoredItem | null {
     emoji: priority === "now" ? "🔴" : "🟡",
     label: `${signal.repo}`,
     detail: details.join(", "),
+    reason,
     source: "git",
   };
 }
@@ -107,11 +143,14 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
   if (event.minutesUntilStart < -15) return null;
 
   let score = 0;
+  let reason = "Upcoming calendar event.";
 
   if (event.minutesUntilStart <= 60 && event.minutesUntilStart > 0) {
     score += 10;
+    reason = `Starting in ${event.minutesUntilStart} minutes.`;
   } else if (event.minutesUntilStart <= 0 && event.minutesUntilStart > -15) {
     score += 10; // Happening now
+    reason = "Happening now.";
   } else {
     score += 5;
   }
@@ -136,6 +175,7 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
     emoji: "🔴",
     label: `Meeting: ${event.title}`,
     detail: timeLabel,
+    reason,
     source: "calendar",
   };
 }
@@ -143,19 +183,24 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
 function scoreIssue(issue: IssueSignal): ScoredItem | null {
   let score = 0;
   const details: string[] = [];
+  const ageDaysRounded = Math.round(issue.ageDays);
+  let agePoints = 0;
 
   if (issue.ageDays > 14) {
-    score += 9;
-    details.push(`open ${Math.round(issue.ageDays)} days`);
+    agePoints = 9;
+    score += agePoints;
+    details.push(`open ${ageDaysRounded} days`);
   } else if (issue.ageDays > 7) {
-    score += 7;
-    details.push(`open ${Math.round(issue.ageDays)} days`);
+    agePoints = 7;
+    score += agePoints;
+    details.push(`open ${ageDaysRounded} days`);
   }
 
-  const hasPriorityLabel = issue.labels.some((label) =>
+  const priorityLabel = issue.labels.find((label) =>
     ["urgent", "critical", "bug"].includes(label.toLowerCase())
   );
-  if (hasPriorityLabel) {
+  const priorityPoints = priorityLabel ? 3 : 0;
+  if (priorityLabel) {
     score += 3;
     details.push("priority label");
   }
@@ -164,6 +209,16 @@ function scoreIssue(issue: IssueSignal): ScoredItem | null {
 
   const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
   const labels = issue.labels.length > 0 ? ` [${issue.labels.join(", ")}]` : "";
+  let reason = "Assigned issue needs attention.";
+  if (agePoints >= priorityPoints && agePoints > 0) {
+    if (issue.ageDays > 14) {
+      reason = `Open ${ageDaysRounded} days and assigned to you.`;
+    } else {
+      reason = `Open ${ageDaysRounded} days and assigned to you.`;
+    }
+  } else if (priorityLabel) {
+    reason = `Marked ${priorityLabel}. Assigned to you.`;
+  }
 
   return {
     priority,
@@ -171,6 +226,7 @@ function scoreIssue(issue: IssueSignal): ScoredItem | null {
     emoji: "📋",
     label: `Issue #${issue.number} on ${issue.repo}`,
     detail: `${issue.title}${labels}${details.length > 0 ? ` — ${details.join(", ")}` : ""}`,
+    reason,
     source: "issue",
   };
 }
