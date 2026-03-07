@@ -50,6 +50,9 @@ export async function onboardCommand(): Promise<void> {
 
     if (repoPath.toLowerCase() === "done" || repoPath === "") {
       addingRepos = false;
+    } else if (repoPath.startsWith("http://") || repoPath.startsWith("https://") || repoPath.startsWith("git@")) {
+      console.log(chalk.yellow(`    ✗ Scope needs local paths, not URLs.`));
+      console.log(chalk.dim(`      Clone it first, then add the local path (e.g. ~/projects/my-repo)`));
     } else {
       const resolved = resolve(repoPath.replace(/^~/, process.env.HOME || "~"));
       if (existsSync(resolved)) {
