@@ -175,22 +175,37 @@ export async function onboardCommand(): Promise<void> {
     console.log(chalk.dim("  No repos found in common directories."));
   }
 
-  // Allow adding more manually
+  // Allow adding more — accept numbers (from the list above) or paths
   console.log("");
   let addingMore = true;
   while (addingMore) {
-    const repoPath = await ask(
+    const input = await ask(
       rl,
-      "  ? Add another repo path (or 'done'): "
+      "  ? Add more (number, path, or 'done'): "
     );
 
-    if (repoPath.toLowerCase() === "done" || repoPath === "") {
+    if (input.toLowerCase() === "done" || input === "") {
       addingMore = false;
-    } else if (repoPath.startsWith("http://") || repoPath.startsWith("https://") || repoPath.startsWith("git@")) {
+    } else if (input.startsWith("http://") || input.startsWith("https://") || input.startsWith("git@")) {
       console.log(chalk.yellow(`    ✗ Scope needs local paths, not URLs.`));
       console.log(chalk.dim(`      Clone it first, then add the local path`));
+    } else if (/^[\d,\s]+$/.test(input)) {
+      // User entered numbers — look up from found repos list
+      const indices = input
+        .split(",")
+        .map((s) => parseInt(s.trim(), 10) - 1)
+        .filter((i) => i >= 0 && i < foundRepos.length);
+      for (const i of indices) {
+        const repo = foundRepos[i];
+        if (!config.repos.includes(repo.path)) {
+          config.repos.push(repo.path);
+          console.log(chalk.green(`    ✓ Added ${repo.name}`));
+        } else {
+          console.log(chalk.dim(`    Already added: ${repo.name}`));
+        }
+      }
     } else {
-      const resolved = resolve(repoPath.replace(/^~/, process.env.HOME || "~"));
+      const resolved = resolve(input.replace(/^~/, process.env.HOME || "~"));
       if (existsSync(resolved)) {
         config.repos.push(resolved);
         console.log(chalk.green(`    ✓ Added ${resolved}`));
