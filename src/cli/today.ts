@@ -1,5 +1,6 @@
 import chalk from "chalk";
 import { loadConfig, configExists } from "../store/config.js";
+import { saveSnapshot } from "../store/snapshot.js";
 import { scanAllRepos } from "../sources/git.js";
 import { getCalendarToday } from "../sources/calendar.js";
 import { scanAssignedIssues } from "../sources/issues.js";
@@ -56,6 +57,9 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
 
   // Prioritize
   const result = prioritize(gitSignals, events, freeBlocks, issueScan.issues);
+
+  // Save snapshot for scope review
+  saveSnapshot(result.now, result.today);
 
   // Output
   if (options.json) {

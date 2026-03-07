@@ -7,6 +7,7 @@ import { contextCommand } from "./cli/context.js";
 import { statusCommand } from "./cli/status.js";
 import { onboardCommand } from "./cli/onboard.js";
 import { configCommand } from "./cli/config.js";
+import { reviewCommand } from "./cli/review.js";
 import { notificationsCommand } from "./cli/notifications.js";
 import { daemonCommand } from "./cli/daemon.js";
 
@@ -45,6 +46,12 @@ program
   .description("Overview of all watched projects")
   .option("--json", "Output as JSON")
   .action(statusCommand);
+
+program
+  .command("review")
+  .description("End-of-day summary — what got done, what's carrying over")
+  .option("--json", "Output as JSON")
+  .action(reviewCommand);
 
 program
   .command("config [key] [value]")
