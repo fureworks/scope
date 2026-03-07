@@ -1,6 +1,7 @@
 import { GitSignal, PRInfo } from "../sources/git.js";
 import { CalendarEvent, FreeBlock } from "../sources/calendar.js";
 import { IssueSignal } from "../sources/issues.js";
+import { isItemMuted } from "../store/muted.js";
 
 export type Priority = "now" | "today" | "later";
 
@@ -265,17 +266,22 @@ export function prioritize(
   // Score git repos
   for (const signal of gitSignals) {
     // Score uncommitted work
-    const repoItem = scoreRepoWork(signal);
+    const gitItemId = `git:${signal.repo}`;
+    const repoItem = isItemMuted(gitItemId) ? null : scoreRepoWork(signal);
     if (repoItem) allItems.push(repoItem);
 
     // Score PRs
     for (const pr of signal.openPRs) {
+      const prItemId = `pr:${signal.repo}#${pr.number}`;
+      if (isItemMuted(prItemId)) continue;
       allItems.push(scorePR(pr, signal.repo));
     }
   }
 
   // Score issues
   for (const issue of issues) {
+    const issueItemId = `issue:${issue.repo}#${issue.number}`;
+    if (isItemMuted(issueItemId)) continue;
     const scored = scoreIssue(issue);
     if (scored) allItems.push(scored);
   }
