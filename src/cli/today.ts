@@ -38,7 +38,7 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     if (!calendarEvents) {
       console.log(
         chalk.dim(
-          "  ⚠ Calendar not available (gws not found or not authenticated)\n"
+          "  ⚠ Calendar not available. Try: gws auth login\n"
         )
       );
     }

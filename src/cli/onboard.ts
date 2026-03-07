@@ -327,7 +327,8 @@ export async function onboardCommand(): Promise<void> {
   console.log(chalk.dim("  ─────────────────────"));
   console.log(chalk.bold.green("  Setup complete!"));
   console.log(chalk.dim(`  Config saved to ~/.scope/config.toml\n`));
-  console.log(`  Try: ${chalk.bold("scope today")}\n`);
+  console.log(`  Try: ${chalk.bold("scope today")}`);
+  console.log(chalk.dim(`\n  Tip: run 'npm link' in this directory to use 'scope' globally\n`));
 
   rl.close();
 }

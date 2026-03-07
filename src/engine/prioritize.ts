@@ -25,7 +25,10 @@ function scorePR(pr: PRInfo, repoName: string): ScoredItem {
   const details: string[] = [];
 
   // Staleness
-  if (pr.ageDays > 5) {
+  if (pr.ageDays > 14) {
+    score += 9; // 2+ weeks = critical
+    details.push(`open ${Math.round(pr.ageDays)} days`);
+  } else if (pr.ageDays > 5) {
     score += 7;
     details.push(`open ${Math.round(pr.ageDays)} days`);
   } else if (pr.ageDays > 2) {
@@ -70,9 +73,13 @@ function scoreRepoWork(signal: GitSignal): ScoredItem | null {
   );
 
   // Staleness of uncommitted work
-  if (signal.lastCommitAge > 24) {
+  const days = Math.round(signal.lastCommitAge / 24);
+  if (signal.lastCommitAge > 72) {
+    score += 9; // 3+ days uncommitted = NOW
+    details.push(`last commit ${days}d ago`);
+  } else if (signal.lastCommitAge > 24) {
     score += 6;
-    details.push(`last commit ${Math.round(signal.lastCommitAge)}h ago`);
+    details.push(`last commit ${days}d ago`);
   } else if (signal.lastCommitAge > 4) {
     score += 3;
     details.push(`last touched ${Math.round(signal.lastCommitAge)}h ago`);
@@ -160,9 +167,17 @@ export function prioritize(
   // Sort by score descending
   allItems.sort((a, b) => b.score - a.score);
 
-  const now = allItems.filter((i) => i.priority === "now");
-  const today = allItems.filter((i) => i.priority === "today");
-  const laterCount = allItems.filter((i) => i.priority === "later").length;
+  // Cap output: max 3 NOW items, max 5 TODAY items. Rest goes to later.
+  const allNow = allItems.filter((i) => i.priority === "now");
+  const allToday = allItems.filter((i) => i.priority === "today");
+  const allLater = allItems.filter((i) => i.priority === "later");
+
+  const now = allNow.slice(0, 3);
+  const todayOverflow = allNow.slice(3);
+  const today = [...todayOverflow, ...allToday].slice(0, 5);
+  const laterCount =
+    allLater.length +
+    Math.max(0, todayOverflow.length + allToday.length - 5);
 
   // Generate suggestions
   const suggestions: string[] = [];
