@@ -2,6 +2,7 @@ import chalk from "chalk";
 import { loadConfig, configExists } from "../store/config.js";
 import { scanAllRepos } from "../sources/git.js";
 import { getCalendarToday } from "../sources/calendar.js";
+import { scanAssignedIssues } from "../sources/issues.js";
 import { prioritize } from "../engine/prioritize.js";
 
 interface TodayOptions {
@@ -46,9 +47,15 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
 
   const events = calendarEvents?.events ?? [];
   const freeBlocks = calendarEvents?.freeBlocks ?? [];
+  const issueScan = await scanAssignedIssues();
+  if (!issueScan.available) {
+    console.log(
+      chalk.dim("  ⚠ GitHub issues not available. Install/auth gh to enable issue signals.\n")
+    );
+  }
 
   // Prioritize
-  const result = prioritize(gitSignals, events, freeBlocks);
+  const result = prioritize(gitSignals, events, freeBlocks, issueScan.issues);
 
   // Output
   if (options.json) {

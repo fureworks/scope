@@ -1,5 +1,6 @@
 import { GitSignal, PRInfo } from "../sources/git.js";
 import { CalendarEvent, FreeBlock } from "../sources/calendar.js";
+import { IssueSignal } from "../sources/issues.js";
 
 export type Priority = "now" | "today" | "later";
 
@@ -9,7 +10,7 @@ export interface ScoredItem {
   emoji: string;
   label: string;
   detail: string;
-  source: "git" | "calendar" | "pr";
+  source: "git" | "calendar" | "pr" | "issue";
 }
 
 export interface PrioritizedOutput {
@@ -139,10 +140,46 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
   };
 }
 
+function scoreIssue(issue: IssueSignal): ScoredItem | null {
+  let score = 0;
+  const details: string[] = [];
+
+  if (issue.ageDays > 14) {
+    score += 9;
+    details.push(`open ${Math.round(issue.ageDays)} days`);
+  } else if (issue.ageDays > 7) {
+    score += 7;
+    details.push(`open ${Math.round(issue.ageDays)} days`);
+  }
+
+  const hasPriorityLabel = issue.labels.some((label) =>
+    ["urgent", "critical", "bug"].includes(label.toLowerCase())
+  );
+  if (hasPriorityLabel) {
+    score += 3;
+    details.push("priority label");
+  }
+
+  if (score === 0) return null;
+
+  const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
+  const labels = issue.labels.length > 0 ? ` [${issue.labels.join(", ")}]` : "";
+
+  return {
+    priority,
+    score,
+    emoji: "📋",
+    label: `Issue #${issue.number} on ${issue.repo}`,
+    detail: `${issue.title}${labels}${details.length > 0 ? ` — ${details.join(", ")}` : ""}`,
+    source: "issue",
+  };
+}
+
 export function prioritize(
   gitSignals: GitSignal[],
   calendarEvents: CalendarEvent[],
-  freeBlocks: FreeBlock[]
+  freeBlocks: FreeBlock[],
+  issues: IssueSignal[]
 ): PrioritizedOutput {
   const allItems: ScoredItem[] = [];
 
@@ -162,6 +199,12 @@ export function prioritize(
     for (const pr of signal.openPRs) {
       allItems.push(scorePR(pr, signal.repo));
     }
+  }
+
+  // Score issues
+  for (const issue of issues) {
+    const scored = scoreIssue(issue);
+    if (scored) allItems.push(scored);
   }
 
   // Sort by score descending

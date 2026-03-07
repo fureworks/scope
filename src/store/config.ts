@@ -17,6 +17,10 @@ export interface ScopeConfig {
     enabled: boolean;
     backend: "gws";
   };
+  daemon: {
+    enabled: boolean;
+    intervalMinutes: number;
+  };
 }
 
 const SCOPE_DIR = join(homedir(), ".scope");
@@ -46,6 +50,7 @@ export function loadConfig(): ScopeConfig {
       repos: [],
       projects: {},
       calendar: { enabled: false, backend: "gws" },
+      daemon: { enabled: false, intervalMinutes: 15 },
     };
   }
 
@@ -58,6 +63,10 @@ export function loadConfig(): ScopeConfig {
     calendar: {
       enabled: parsed.calendar?.enabled ?? false,
       backend: parsed.calendar?.backend ?? "gws",
+    },
+    daemon: {
+      enabled: parsed.daemon?.enabled ?? false,
+      intervalMinutes: parsed.daemon?.intervalMinutes ?? 15,
     },
   };
 }
@@ -73,6 +82,10 @@ export function saveConfig(config: ScopeConfig): void {
   lines.push("[calendar]");
   lines.push(`enabled = ${config.calendar.enabled}`);
   lines.push(`backend = "${config.calendar.backend}"`);
+  lines.push("");
+  lines.push("[daemon]");
+  lines.push(`enabled = ${config.daemon.enabled}`);
+  lines.push(`intervalMinutes = ${config.daemon.intervalMinutes}`);
   lines.push("");
 
   for (const [name, project] of Object.entries(config.projects)) {

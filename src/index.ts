@@ -7,6 +7,7 @@ import { contextCommand } from "./cli/context.js";
 import { statusCommand } from "./cli/status.js";
 import { onboardCommand } from "./cli/onboard.js";
 import { configCommand } from "./cli/config.js";
+import { daemonCommand } from "./cli/daemon.js";
 
 const program = new Command();
 
@@ -48,5 +49,10 @@ program
   .command("config [key] [value]")
   .description("View or edit configuration")
   .action(configCommand);
+
+program
+  .command("daemon <action>")
+  .description("Manage background signal checks (start|stop|status)")
+  .action(daemonCommand);
 
 program.parse();

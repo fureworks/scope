@@ -141,6 +141,7 @@ export async function onboardCommand(): Promise<void> {
     repos: [],
     projects: {},
     calendar: { enabled: false, backend: "gws" },
+    daemon: { enabled: false, intervalMinutes: 15 },
   };
 
   // Step 1: Git repos
