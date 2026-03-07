@@ -5,6 +5,12 @@ export interface CalendarEvent {
   minutesUntilStart: number;
 }
 
+export interface CalendarDaySummary {
+  meetings: number;
+  freeMinutes: number;
+  events: string[];
+}
+
 export interface CalendarSignal {
   events: CalendarEvent[];
   freeBlocks: FreeBlock[];
@@ -110,6 +116,141 @@ export async function getCalendarToday(): Promise<CalendarSignal | null> {
     return { events, freeBlocks };
   } catch {
     return null;
+  }
+}
+
+export async function getCalendarWeek(): Promise<Map<string, CalendarDaySummary> | null> {
+  try {
+    const { execSync } = await import("node:child_process");
+
+    try {
+      execSync("which gws", { stdio: "pipe" });
+    } catch {
+      return null;
+    }
+
+    const { monday, friday } = getCurrentWorkWeekRange();
+    const result = execSync(
+      `gws calendar +agenda --from ${formatDate(monday)} --to ${formatDate(friday)} --format json 2>/dev/null`,
+      {
+        encoding: "utf-8",
+        timeout: 15000,
+        stdio: ["pipe", "pipe", "pipe"],
+      }
+    );
+
+    const items = parseCalendarItems(result);
+    const summaries = initializeWeekSummaries(monday);
+
+    for (const item of items) {
+      const startStr =
+        typeof item.start === "string"
+          ? item.start
+          : item.start?.dateTime || item.start?.date || item.startTime;
+      const endStr =
+        typeof item.end === "string"
+          ? item.end
+          : item.end?.dateTime || item.end?.date || item.endTime;
+      const title = item.summary || item.title || "Untitled event";
+      if (!startStr) continue;
+
+      const startTime = new Date(startStr);
+      if (isNaN(startTime.getTime())) continue;
+      const endTime = endStr
+        ? new Date(endStr)
+        : new Date(startTime.getTime() + 60 * 60 * 1000);
+      if (isNaN(endTime.getTime())) continue;
+
+      const dayName = getDayKey(startTime);
+      const summary = summaries.get(dayName);
+      if (!summary) continue;
+
+      summary.meetings += 1;
+      summary.events.push(title);
+
+      const meetingMinutes = Math.max(
+        0,
+        Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60))
+      );
+      summary.freeMinutes = Math.max(0, summary.freeMinutes - meetingMinutes);
+    }
+
+    return summaries;
+  } catch {
+    return null;
+  }
+}
+
+function initializeWeekSummaries(monday: Date): Map<string, CalendarDaySummary> {
+  const map = new Map<string, CalendarDaySummary>();
+
+  for (let i = 0; i < 5; i += 1) {
+    const day = new Date(monday);
+    day.setDate(monday.getDate() + i);
+    map.set(getDayKey(day), {
+      meetings: 0,
+      freeMinutes: 8 * 60,
+      events: [],
+    });
+  }
+
+  return map;
+}
+
+function getCurrentWorkWeekRange(): { monday: Date; friday: Date } {
+  const now = new Date();
+  const monday = new Date(now);
+  monday.setHours(0, 0, 0, 0);
+
+  const day = monday.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  monday.setDate(monday.getDate() + diffToMonday);
+
+  const friday = new Date(monday);
+  friday.setDate(monday.getDate() + 4);
+  friday.setHours(23, 59, 59, 999);
+
+  return { monday, friday };
+}
+
+function formatDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getDayKey(date: Date): string {
+  return date.toLocaleDateString("en-US", { weekday: "short" });
+}
+
+function parseCalendarItems(raw: string): Array<{
+  summary?: string;
+  title?: string;
+  start?: string | { dateTime?: string; date?: string };
+  end?: string | { dateTime?: string; date?: string };
+  startTime?: string;
+  endTime?: string;
+}> {
+  try {
+    const data = JSON.parse(raw);
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.items)) return data.items;
+    if (Array.isArray(data.events)) return data.events;
+    return [];
+  } catch {
+    return raw
+      .trim()
+      .split("\n")
+      .filter((line) => line.trim())
+      .flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line);
+          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed.items)) return parsed.items;
+          if (Array.isArray(parsed.events)) return parsed.events;
+          return [parsed];
+        } catch {
+          return [];
+        }
+      });
   }
 }
 
