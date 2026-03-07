@@ -13,6 +13,7 @@ import { daemonCommand } from "./cli/daemon.js";
 import { muteCommand, snoozeCommand } from "./cli/snooze.js";
 import { planCommand } from "./cli/plan.js";
 import { initCommand } from "./cli/init.js";
+import { tuneCommand } from "./cli/tune.js";
 
 const program = new Command();
 
@@ -91,6 +92,14 @@ program
   .option("--list", "Show muted and snoozed items")
   .option("--clear <item-id>", "Remove an item from muted/snoozed")
   .action(muteCommand);
+
+program
+  .command("tune [key] [value]")
+  .description("View or adjust scoring weights")
+  .option("--show", "Display current weights")
+  .option("--reset", "Reset weights to defaults")
+  .option("--config", "Open config in $EDITOR")
+  .action(tuneCommand);
 
 program
   .command("plan")

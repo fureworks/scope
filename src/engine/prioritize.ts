@@ -2,6 +2,7 @@ import { GitSignal, PRInfo } from "../sources/git.js";
 import { CalendarEvent, FreeBlock } from "../sources/calendar.js";
 import { IssueSignal } from "../sources/issues.js";
 import { isItemMuted } from "../store/muted.js";
+import { ScoringWeights, DEFAULT_WEIGHTS } from "../store/config.js";
 
 export type Priority = "now" | "today" | "later";
 
@@ -253,7 +254,8 @@ export function prioritize(
   gitSignals: GitSignal[],
   calendarEvents: CalendarEvent[],
   freeBlocks: FreeBlock[],
-  issues: IssueSignal[]
+  issues: IssueSignal[],
+  weights: ScoringWeights = DEFAULT_WEIGHTS
 ): PrioritizedOutput {
   const allItems: CandidateItem[] = [];
 
@@ -284,6 +286,22 @@ export function prioritize(
     if (isItemMuted(issueItemId)) continue;
     const scored = scoreIssue(issue);
     if (scored) allItems.push(scored);
+  }
+
+  // Apply weight multipliers based on source type
+  for (const item of allItems) {
+    if (item.source === "git") {
+      item.score = Math.round(item.score * weights.staleness);
+    } else if (item.source === "pr") {
+      // PRs have both staleness and blocking components — use the higher weight
+      item.score = Math.round(item.score * Math.max(weights.staleness, weights.blocking));
+    } else if (item.source === "calendar") {
+      item.score = Math.round(item.score * weights.timePressure);
+    } else if (item.source === "issue") {
+      item.score = Math.round(item.score * weights.staleness);
+    }
+    // Recalculate priority tier after weight adjustment
+    item.priority = item.score >= 8 ? "now" : item.score >= 4 ? "today" : "later";
   }
 
   // Sort by score descending
