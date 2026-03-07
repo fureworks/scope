@@ -20,7 +20,7 @@ const program = new Command();
 program
   .name("scope")
   .description("Personal ops CLI — focus on what matters.")
-  .version("0.1.0");
+  .version("0.2.0");
 
 program
   .command("init")
