@@ -140,7 +140,7 @@ Scope reads from external tools. All are optional — missing integrations reduc
 | Tool | What it provides | Install |
 |------|-----------------|---------|
 | `gh` (GitHub CLI) | PRs, issues, CI status | [cli.github.com](https://cli.github.com/) |
-| `gws` (Google Workspace CLI) | Calendar events, free blocks | `npm i -g @anthropic-ai/gws` |
+| `gws` (Google Workspace CLI) | Calendar events, free blocks | `npm i -g @googleworkspace/cli` |
 
 ## Best Practices
 
