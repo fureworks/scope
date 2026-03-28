@@ -59,6 +59,46 @@ function getLabelBoost(labels: string[]): number {
   return maxBoost;
 }
 
+function scoreMyPR(pr: PRInfo, repoName: string): CandidateItem | null {
+  // Only surface if there's a review decision worth acting on
+  if (!pr.reviewDecision || pr.reviewDecision === "REVIEW_REQUIRED") return null;
+
+  let score = 0;
+  let reason = "";
+  const details: string[] = [];
+
+  if (pr.reviewDecision === "CHANGES_REQUESTED") {
+    score = 28; // High — someone reviewed and wants changes
+    reason = "Changes requested on your PR. Respond to reviewer.";
+    details.push("changes requested");
+  } else if (pr.reviewDecision === "APPROVED") {
+    score = 18; // Medium — ready to merge, don't let it sit
+    reason = "Your PR is approved. Merge it.";
+    details.push("approved, ready to merge");
+  }
+
+  if (pr.ciStatus === "fail") {
+    score += 5;
+    details.push("CI failing");
+  }
+
+  if (score === 0) return null;
+
+  const priority: Priority = score >= 25 ? "now" : score >= 12 ? "today" : "later";
+
+  return {
+    priority,
+    score,
+    emoji: pr.reviewDecision === "CHANGES_REQUESTED" ? "🔴" : "🟢",
+    label: `Your PR #${pr.number} on ${repoName}`,
+    detail: `${pr.title} — ${details.join(", ")}`,
+    reason,
+    confidence: "high" as const,
+    source: "pr",
+    suppressionReason: undefined,
+  };
+}
+
 function scorePR(pr: PRInfo, repoName: string): CandidateItem {
   let score = 0;
   const details: string[] = [];
@@ -318,11 +358,21 @@ export function prioritize(
     const repoItem = isItemMuted(gitItemId) ? null : scoreRepoWork(signal);
     if (repoItem) allItems.push(repoItem);
 
-    // Score PRs
+    // Score PRs (in the repo)
     for (const pr of signal.openPRs) {
       const prItemId = `pr:${signal.repo}#${pr.number}`;
       if (isItemMuted(prItemId)) continue;
       allItems.push(scorePR(pr, signal.repo));
+    }
+
+    // Score my PRs with inbound reviews
+    for (const pr of signal.myPRs) {
+      // Skip if already scored as an open PR (dedup)
+      const prItemId = `mypr:${signal.repo}#${pr.number}`;
+      const alreadyScored = signal.openPRs.some((p) => p.number === pr.number);
+      if (alreadyScored || isItemMuted(prItemId)) continue;
+      const scored = scoreMyPR(pr, signal.repo);
+      if (scored) allItems.push(scored);
     }
   }
 

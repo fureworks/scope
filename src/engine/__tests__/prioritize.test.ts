@@ -32,7 +32,7 @@ function makeGitSignal(repo: string, prs: PRInfo[]): GitSignal {
     uncommittedFiles: 0,
     lastCommitAge: 1,
     staleBranches: [],
-    openPRs: prs,
+    openPRs: prs, myPRs: [],
   };
 }
 
@@ -206,7 +206,7 @@ describe('prioritize', () => {
         uncommittedFiles: 5,
         lastCommitAge: 80, // hours (>72 = 3+ days)
         staleBranches: [],
-        openPRs: [],
+        openPRs: [], myPRs: [],
       };
 
       const result = prioritize([signal], [], [], [], DEFAULT_WEIGHTS);
@@ -222,7 +222,7 @@ describe('prioritize', () => {
         uncommittedFiles: 3,
         lastCommitAge: 36, // hours (>24, <72)
         staleBranches: [],
-        openPRs: [],
+        openPRs: [], myPRs: [],
       };
 
       const result = prioritize([signal], [], [], [], DEFAULT_WEIGHTS);

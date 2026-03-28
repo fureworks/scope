@@ -8,6 +8,7 @@ export interface GitSignal {
   lastCommitAge: number; // hours since last commit
   staleBranches: string[]; // branches untouched > 3 days
   openPRs: PRInfo[];
+  myPRs: PRInfo[]; // PRs authored by the current user (for inbound review detection)
 }
 
 export interface PRInfo {
@@ -88,7 +89,10 @@ export async function scanRepo(repoPath: string): Promise<GitSignal | null> {
     }
 
     // Get open PRs via gh CLI
-    const openPRs = await getOpenPRs(repoPath);
+    const [openPRs, myPRs] = await Promise.all([
+      getOpenPRs(repoPath),
+      getMyPRs(repoPath),
+    ]);
 
     const repoName = repoPath.split("/").pop() || repoPath;
 
@@ -99,6 +103,7 @@ export async function scanRepo(repoPath: string): Promise<GitSignal | null> {
       lastCommitAge,
       staleBranches: staleBranches.slice(0, 5), // Cap at 5
       openPRs,
+      myPRs,
     };
   } catch {
     return null;
@@ -171,6 +176,71 @@ async function getOpenPRs(repoPath: string): Promise<PRInfo[]> {
     });
   } catch {
     // gh CLI not available or not in a repo with remote
+    return [];
+  }
+}
+
+async function getMyPRs(repoPath: string): Promise<PRInfo[]> {
+  try {
+    const { exec } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(exec);
+
+    const { stdout } = await execAsync(
+      `gh pr list --author @me --state open --json number,title,url,createdAt,reviewRequests,reviewDecision,statusCheckRollup,mergeable,labels --limit 10`,
+      {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 10000,
+      }
+    );
+
+    const prs = JSON.parse(stdout) as Array<{
+      number: number;
+      title: string;
+      url: string;
+      createdAt: string;
+      reviewRequests: Array<{ login?: string }>;
+      reviewDecision: string;
+      statusCheckRollup: Array<{ conclusion: string }> | null;
+      mergeable: string;
+      labels: Array<{ name: string }>;
+    }>;
+
+    return prs.map((pr) => {
+      const ageDays =
+        (Date.now() - new Date(pr.createdAt).getTime()) /
+        (1000 * 60 * 60 * 24);
+
+      let ciStatus: PRInfo["ciStatus"] = "unknown";
+      if (pr.statusCheckRollup && pr.statusCheckRollup.length > 0) {
+        const hasFailure = pr.statusCheckRollup.some(
+          (c) => c.conclusion === "FAILURE"
+        );
+        const allSuccess = pr.statusCheckRollup.every(
+          (c) => c.conclusion === "SUCCESS"
+        );
+        if (hasFailure) ciStatus = "fail";
+        else if (allSuccess) ciStatus = "pass";
+        else ciStatus = "pending";
+      }
+
+      return {
+        number: pr.number,
+        title: pr.title,
+        url: pr.url,
+        ageDays: Math.round(ageDays * 10) / 10,
+        reviewRequested:
+          pr.reviewRequests.length > 0 ||
+          pr.reviewDecision === "REVIEW_REQUIRED" ||
+          pr.reviewDecision === "CHANGES_REQUESTED",
+        reviewDecision: pr.reviewDecision || "",
+        ciStatus,
+        hasConflicts: pr.mergeable === "CONFLICTING",
+        labels: (pr.labels ?? []).map((l) => l.name).filter(Boolean),
+      };
+    });
+  } catch {
     return [];
   }
 }
