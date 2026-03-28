@@ -31,31 +31,51 @@ interface CandidateItem extends ScoredItem {
   suppressionReason?: string;
 }
 
+// Label patterns → score boost (case-insensitive substring match)
+const LABEL_BOOSTS: Array<{ pattern: string; boost: number }> = [
+  { pattern: "p0", boost: 15 },
+  { pattern: "critical", boost: 15 },
+  { pattern: "blocker", boost: 15 },
+  { pattern: "security", boost: 12 },
+  { pattern: "compliance", boost: 12 },
+  { pattern: "p1", boost: 10 },
+  { pattern: "bug", boost: 8 },
+  { pattern: "p2", boost: 4 },
+  { pattern: "enhancement", boost: 2 },
+];
+
+function getLabelBoost(labels: string[]): number {
+  let maxBoost = 0;
+  for (const label of labels) {
+    const lower = label.toLowerCase();
+    for (const { pattern, boost } of LABEL_BOOSTS) {
+      // Word-boundary match: "p1" matches "p1-important" but not "p10"
+      const re = new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`);
+      if (re.test(lower) && boost > maxBoost) {
+        maxBoost = boost;
+      }
+    }
+  }
+  return maxBoost;
+}
+
 function scorePR(pr: PRInfo, repoName: string): CandidateItem {
   let score = 0;
   const details: string[] = [];
   const ageDaysRounded = Math.round(pr.ageDays);
-  let agePoints = 0;
 
-  // Staleness
-  if (pr.ageDays > 14) {
-    agePoints = 9; // 2+ weeks = critical
-    score += agePoints;
-    details.push(`open ${ageDaysRounded} days`);
-  } else if (pr.ageDays > 5) {
-    agePoints = 7;
-    score += agePoints;
-    details.push(`open ${ageDaysRounded} days`);
-  } else if (pr.ageDays > 2) {
-    agePoints = 4;
+  // Graduated staleness — scales with age, not step-function
+  let agePoints = 0;
+  if (pr.ageDays > 2) {
+    agePoints = Math.min(30, Math.round(pr.ageDays * 0.6));
     score += agePoints;
     details.push(`open ${ageDaysRounded} days`);
   }
 
-  // Blocking potential
-  const reviewPoints = pr.reviewRequested ? 8 : 0;
-  const ciPoints = pr.ciStatus === "fail" ? 5 : 0;
-  const conflictPoints = pr.hasConflicts ? 4 : 0;
+  // Blocking potential (scaled up proportionally)
+  const reviewPoints = pr.reviewRequested ? 15 : 0;
+  const ciPoints = pr.ciStatus === "fail" ? 10 : 0;
+  const conflictPoints = pr.hasConflicts ? 8 : 0;
 
   if (pr.reviewRequested) {
     score += reviewPoints;
@@ -68,6 +88,13 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
   if (pr.hasConflicts) {
     score += conflictPoints;
     details.push("has conflicts");
+  }
+
+  // Label-based boost (#23, #25)
+  const labelBoost = getLabelBoost(pr.labels ?? []);
+  if (labelBoost > 0) {
+    score += labelBoost;
+    details.push("priority label");
   }
 
   let reason = "Needs attention.";
@@ -89,7 +116,8 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
     reason = "Merge conflicts detected. Rebase or close.";
   }
 
-  const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
+  // Updated thresholds for wider score range
+  const priority: Priority = score >= 25 ? "now" : score >= 12 ? "today" : "later";
 
   const suppressionReason =
     priority === "later"
@@ -101,9 +129,12 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
       : undefined;
 
   // Confidence: check for thin data
+  // Fix #22: don't say "no reviewer assigned" when reviewDecision exists
   const missingContext: string[] = [];
   if (pr.ciStatus === "unknown") missingContext.push("no CI status");
-  if (!pr.reviewRequested && pr.ageDays > 2) missingContext.push("no reviewer assigned");
+  if (!pr.reviewRequested && !pr.reviewDecision && pr.ageDays > 2) {
+    missingContext.push("no reviewer assigned");
+  }
   const confidence: ScoredItem["confidence"] = missingContext.length >= 2 ? "low" : missingContext.length === 1 ? "medium" : "high";
 
   return {
@@ -130,27 +161,27 @@ function scoreRepoWork(signal: GitSignal): CandidateItem | null {
     `${signal.uncommittedFiles} uncommitted file${signal.uncommittedFiles > 1 ? "s" : ""}`
   );
 
-  // Staleness of uncommitted work
+  // Staleness of uncommitted work (scaled to new range)
   const days = Math.round(signal.lastCommitAge / 24);
   let reason = "Uncommitted changes detected.";
   if (signal.lastCommitAge > 72) {
-    score += 9; // 3+ days uncommitted = NOW
+    score += 28; // 3+ days uncommitted = NOW
     details.push(`last commit ${days}d ago`);
     reason = `Uncommitted work for ${days} days. Commit or stash.`;
   } else if (signal.lastCommitAge > 24) {
-    score += 6;
+    score += 18; // 1-3 days = TODAY
     details.push(`last commit ${days}d ago`);
     reason = `Uncommitted work for ${days} days. Commit or stash.`;
   } else if (signal.lastCommitAge > 4) {
     const hours = Math.round(signal.lastCommitAge);
-    score += 3;
+    score += 8; // 4+ hours = low TODAY
     details.push(`last touched ${hours}h ago`);
     reason = `Uncommitted work for ${hours} hours. Commit or stash.`;
   } else {
-    score += 1;
+    score += 3;
   }
 
-  const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
+  const priority: Priority = score >= 25 ? "now" : score >= 12 ? "today" : "later";
 
   return {
     priority,
@@ -173,17 +204,20 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
   let score = 0;
   let reason = "Upcoming calendar event.";
 
-  if (event.minutesUntilStart <= 60 && event.minutesUntilStart > 0) {
-    score += 10;
-    reason = `Starting in ${event.minutesUntilStart} minutes.`;
-  } else if (event.minutesUntilStart <= 0 && event.minutesUntilStart > -15) {
-    score += 10; // Happening now
+  if (event.minutesUntilStart <= 0 && event.minutesUntilStart > -15) {
+    score += 30; // Happening now = always NOW
     reason = "Happening now.";
+  } else if (event.minutesUntilStart <= 30) {
+    score += 28; // <30 min = NOW
+    reason = `Starting in ${event.minutesUntilStart} minutes.`;
+  } else if (event.minutesUntilStart <= 60) {
+    score += 20; // <60 min = TODAY (high)
+    reason = `Starting in ${event.minutesUntilStart} minutes.`;
   } else {
-    score += 5;
+    score += 14; // >60 min = TODAY (low)
   }
 
-  const priority: Priority = score >= 8 ? "now" : "today";
+  const priority: Priority = score >= 25 ? "now" : "today";
 
   let timeLabel: string;
   if (event.minutesUntilStart <= 0) {
@@ -213,41 +247,34 @@ function scoreIssue(issue: IssueSignal): CandidateItem {
   let score = 0;
   const details: string[] = [];
   const ageDaysRounded = Math.round(issue.ageDays);
-  let agePoints = 0;
 
-  if (issue.ageDays > 14) {
-    agePoints = 9;
-    score += agePoints;
-    details.push(`open ${ageDaysRounded} days`);
-  } else if (issue.ageDays > 7) {
-    agePoints = 7;
+  // Graduated staleness — same as PRs
+  let agePoints = 0;
+  if (issue.ageDays > 2) {
+    agePoints = Math.min(30, Math.round(issue.ageDays * 0.6));
     score += agePoints;
     details.push(`open ${ageDaysRounded} days`);
   }
 
-  const priorityLabel = issue.labels.find((label) =>
-    ["urgent", "critical", "bug"].includes(label.toLowerCase())
-  );
-  const priorityPoints = priorityLabel ? 3 : 0;
-  if (priorityLabel) {
-    score += 3;
+  // Label-based boost (reuses same LABEL_BOOSTS as PRs)
+  const labelBoost = getLabelBoost(issue.labels);
+  if (labelBoost > 0) {
+    score += labelBoost;
     details.push("priority label");
   }
 
-  const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
+  const priority: Priority = score >= 25 ? "now" : score >= 12 ? "today" : "later";
   const labels = issue.labels.length > 0 ? ` [${issue.labels.join(", ")}]` : "";
-  let reason = "Assigned issue needs attention.";
-  if (agePoints >= priorityPoints && agePoints > 0) {
-    if (issue.ageDays > 14) {
-      reason = `Open ${ageDaysRounded} days and assigned to you.`;
-    } else {
-      reason = `Open ${ageDaysRounded} days and assigned to you.`;
-    }
-  } else if (priorityLabel) {
-    reason = `Marked ${priorityLabel}. Assigned to you.`;
+  
+  let reason = "Issue needs attention.";
+  if (agePoints > labelBoost && agePoints > 0) {
+    reason = `Open ${ageDaysRounded} days. Getting stale.`;
+  } else if (labelBoost > 0) {
+    const topLabel = issue.labels.find((l) => getLabelBoost([l]) === labelBoost) || issue.labels[0];
+    reason = `Marked ${topLabel}. Needs attention.`;
   }
 
-  // Confidence: issues missing labels or with no assignee context
+  // Confidence: issues missing labels
   const issueMissing: string[] = [];
   if (issue.labels.length === 0) issueMissing.push("no labels");
   const issueConfidence: ScoredItem["confidence"] = issueMissing.length > 0 ? "medium" : "high";
@@ -263,7 +290,7 @@ function scoreIssue(issue: IssueSignal): CandidateItem {
     confidenceNote: issueMissing.length > 0 ? `low context: ${issueMissing.join(", ")}` : undefined,
     source: "issue",
     suppressionReason:
-      priority === "later" && issue.ageDays < 7 && !priorityLabel
+      priority === "later" && issue.ageDays < 7 && labelBoost === 0
         ? "Less than a week old, no priority label"
         : undefined,
   };
@@ -320,7 +347,7 @@ export function prioritize(
       item.score = Math.round(item.score * weights.staleness);
     }
     // Recalculate priority tier after weight adjustment
-    item.priority = item.score >= 8 ? "now" : item.score >= 4 ? "today" : "later";
+    item.priority = item.score >= 25 ? "now" : item.score >= 12 ? "today" : "later";
   }
 
   // Sort by score descending

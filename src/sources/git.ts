@@ -16,8 +16,10 @@ export interface PRInfo {
   url: string;
   ageDays: number;
   reviewRequested: boolean;
+  reviewDecision: string; // APPROVED, REVIEW_REQUIRED, CHANGES_REQUESTED, or ""
   ciStatus: "pass" | "fail" | "pending" | "unknown";
   hasConflicts: boolean;
+  labels: string[];
 }
 
 export async function scanRepo(repoPath: string): Promise<GitSignal | null> {
@@ -105,25 +107,29 @@ export async function scanRepo(repoPath: string): Promise<GitSignal | null> {
 
 async function getOpenPRs(repoPath: string): Promise<PRInfo[]> {
   try {
-    const { execSync } = await import("node:child_process");
-    const result = execSync(
-      `gh pr list --json number,title,url,createdAt,reviewRequests,statusCheckRollup,mergeable --limit 10`,
+    const { exec } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(exec);
+
+    const { stdout } = await execAsync(
+      `gh pr list --json number,title,url,createdAt,reviewRequests,reviewDecision,statusCheckRollup,mergeable,labels --limit 10`,
       {
         cwd: repoPath,
         encoding: "utf-8",
         timeout: 10000,
-        stdio: ["pipe", "pipe", "pipe"],
       }
     );
 
-    const prs = JSON.parse(result) as Array<{
+    const prs = JSON.parse(stdout) as Array<{
       number: number;
       title: string;
       url: string;
       createdAt: string;
       reviewRequests: Array<{ login?: string }>;
+      reviewDecision: string;
       statusCheckRollup: Array<{ conclusion: string }> | null;
       mergeable: string;
+      labels: Array<{ name: string }>;
     }>;
 
     return prs.map((pr) => {
@@ -144,14 +150,23 @@ async function getOpenPRs(repoPath: string): Promise<PRInfo[]> {
         else ciStatus = "pending";
       }
 
+      // Fix #22: detect reviewers via both reviewRequests array AND reviewDecision
+      const reviewDecision = pr.reviewDecision || "";
+      const reviewRequested =
+        pr.reviewRequests.length > 0 ||
+        reviewDecision === "REVIEW_REQUIRED" ||
+        reviewDecision === "CHANGES_REQUESTED";
+
       return {
         number: pr.number,
         title: pr.title,
         url: pr.url,
         ageDays: Math.round(ageDays * 10) / 10,
-        reviewRequested: pr.reviewRequests.length > 0,
+        reviewRequested,
+        reviewDecision,
         ciStatus,
         hasConflicts: pr.mergeable === "CONFLICTING",
+        labels: (pr.labels ?? []).map((l) => l.name).filter(Boolean),
       };
     });
   } catch {
