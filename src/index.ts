@@ -113,7 +113,7 @@ program
   .command("clean")
   .description("Suggest stale branch cleanup across repos")
   .option("--json", "Output as JSON")
-  .option("--dry", "List only, no cleanup suggestions")
+  .option("--dry-run", "List only, no cleanup suggestions")
   .action(cleanCommand);
 
 program

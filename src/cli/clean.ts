@@ -4,7 +4,7 @@ import { scanAllRepos } from "../sources/git.js";
 
 interface CleanOptions {
   json?: boolean;
-  dry?: boolean;
+  dryRun?: boolean;
 }
 
 export async function cleanCommand(options: CleanOptions): Promise<void> {
@@ -66,7 +66,7 @@ export async function cleanCommand(options: CleanOptions): Promise<void> {
     chalk.dim(`\n  ${stale.length} stale branch${stale.length > 1 ? "es" : ""} across ${byRepo.size} repo${byRepo.size > 1 ? "s" : ""}.`)
   );
 
-  if (!options.dry) {
+  if (!options.dryRun) {
     console.log(
       chalk.dim("  To delete: git branch -d <branch> (in each repo)\n")
     );
