@@ -12,6 +12,55 @@ export interface IssueScanResult {
   issues: IssueSignal[];
 }
 
+export async function scanRepoIssues(repoPath: string): Promise<IssueSignal[]> {
+  try {
+    const { exec } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(exec);
+
+    const { stdout } = await execAsync(
+      "gh issue list --state open --json number,title,url,createdAt,labels --limit 20",
+      {
+        cwd: repoPath,
+        encoding: "utf-8",
+        timeout: 10000,
+      }
+    );
+
+    const parsed = JSON.parse(stdout) as Array<{
+      number: number;
+      title: string;
+      url: string;
+      createdAt: string;
+      labels?: Array<{ name?: string }>;
+    }>;
+
+    const repoName = repoPath.split("/").pop() || "unknown";
+
+    return parsed.map((issue) => {
+      const ageDays =
+        (Date.now() - new Date(issue.createdAt).getTime()) /
+        (1000 * 60 * 60 * 24);
+
+      return {
+        number: issue.number,
+        title: issue.title,
+        url: issue.url,
+        repo: repoName,
+        ageDays: Math.round(ageDays * 10) / 10,
+        labels: (issue.labels ?? []).map((l) => l.name || "").filter(Boolean),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function scanAllRepoIssues(repoPaths: string[]): Promise<IssueSignal[]> {
+  const results = await Promise.all(repoPaths.map(scanRepoIssues));
+  return results.flat();
+}
+
 export async function scanAssignedIssues(): Promise<IssueScanResult> {
   try {
     const { execSync } = await import("node:child_process");
