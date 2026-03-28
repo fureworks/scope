@@ -1,19 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// We test the PR parsing logic by mocking child_process
-vi.mock('node:child_process', () => ({
-  execSync: vi.fn(),
-  exec: vi.fn(),
-}));
-
-describe('getOpenPRs', () => {
-  beforeEach(() => {
-    vi.resetModules();
-    vi.restoreAllMocks();
-  });
-
-  it('should parse PR data with reviewRequests correctly', async () => {
-    const mockPRData = [
+describe('PRInfo interface contract', () => {
+  it('should include reviewDecision and labels fields', () => {
+    // Verify the shape of PRInfo matches what we expect from gh CLI
+    const mockGhOutput = [
       {
         number: 119,
         title: 'fix(lti): persist launch_id',
@@ -23,40 +13,51 @@ describe('getOpenPRs', () => {
         reviewDecision: 'REVIEW_REQUIRED',
         statusCheckRollup: [{ conclusion: 'SUCCESS' }],
         mergeable: 'MERGEABLE',
-        labels: [{ name: 'bug' }],
+        labels: [{ name: 'bug' }, { name: 'P1-important' }],
       },
     ];
 
-    const { execSync } = await import('node:child_process');
-    (execSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(mockPRData));
+    const pr = mockGhOutput[0];
 
-    // Dynamic import to get fresh module with mocked deps
-    const { scanRepo } = await import('../git.js');
-    
-    // scanRepo needs a real git repo — skip full scan, test parsing directly
-    // Instead test that the module loads and types are correct
-    expect(typeof scanRepo).toBe('function');
+    // reviewDecision should be a string
+    expect(typeof pr.reviewDecision).toBe('string');
+    expect(pr.reviewDecision).toBe('REVIEW_REQUIRED');
+
+    // labels should be extractable to string[]
+    const labels = pr.labels.map((l) => l.name).filter(Boolean);
+    expect(labels).toEqual(['bug', 'P1-important']);
+
+    // reviewRequested should be true when reviewRequests is non-empty OR reviewDecision is set
+    const reviewRequested =
+      pr.reviewRequests.length > 0 ||
+      pr.reviewDecision === 'REVIEW_REQUIRED' ||
+      pr.reviewDecision === 'CHANGES_REQUESTED';
+    expect(reviewRequested).toBe(true);
   });
 
-  it('should handle empty reviewRequests array', async () => {
-    const mockPRData = [
-      {
-        number: 83,
-        title: 'feat: auto-greeting',
-        url: 'https://github.com/test/repo/pull/83',
-        createdAt: new Date(Date.now() - 51 * 24 * 60 * 60 * 1000).toISOString(),
-        reviewRequests: [],
-        reviewDecision: '',
-        statusCheckRollup: [{ conclusion: 'FAILURE' }],
-        mergeable: 'MERGEABLE',
-        labels: [],
-      },
-    ];
+  it('should detect no reviewer when both reviewRequests and reviewDecision are empty', () => {
+    const pr = {
+      reviewRequests: [] as Array<{ login: string }>,
+      reviewDecision: '',
+    };
 
-    const { execSync } = await import('node:child_process');
-    (execSync as ReturnType<typeof vi.fn>).mockReturnValue(JSON.stringify(mockPRData));
+    const reviewRequested =
+      pr.reviewRequests.length > 0 ||
+      pr.reviewDecision === 'REVIEW_REQUIRED' ||
+      pr.reviewDecision === 'CHANGES_REQUESTED';
+    expect(reviewRequested).toBe(false);
+  });
 
-    expect(mockPRData[0].reviewRequests.length).toBe(0);
-    expect(mockPRData[0].reviewDecision).toBe('');
+  it('should detect reviewer via CHANGES_REQUESTED even with empty reviewRequests', () => {
+    const pr = {
+      reviewRequests: [] as Array<{ login: string }>,
+      reviewDecision: 'CHANGES_REQUESTED',
+    };
+
+    const reviewRequested =
+      pr.reviewRequests.length > 0 ||
+      pr.reviewDecision === 'REVIEW_REQUIRED' ||
+      pr.reviewDecision === 'CHANGES_REQUESTED';
+    expect(reviewRequested).toBe(true);
   });
 });

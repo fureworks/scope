@@ -165,4 +165,95 @@ describe('prioritize', () => {
       expect(allItems.some(i => i.source === 'issue')).toBe(true);
     });
   });
+
+  describe('calendar scoring', () => {
+    it('should classify meeting in 10 minutes as NOW', () => {
+      const event = {
+        title: 'Standup',
+        startTime: new Date(Date.now() + 10 * 60 * 1000),
+        endTime: new Date(Date.now() + 40 * 60 * 1000),
+        minutesUntilStart: 10,
+        durationMinutes: 30,
+      };
+
+      const result = prioritize([], [event], [], [], DEFAULT_WEIGHTS);
+      const item = result.now.find(i => i.source === 'calendar');
+      expect(item).toBeDefined();
+      expect(item!.score).toBeGreaterThanOrEqual(25);
+    });
+
+    it('should classify meeting in 45 minutes as TODAY', () => {
+      const event = {
+        title: 'Review',
+        startTime: new Date(Date.now() + 45 * 60 * 1000),
+        endTime: new Date(Date.now() + 75 * 60 * 1000),
+        minutesUntilStart: 45,
+        durationMinutes: 30,
+      };
+
+      const result = prioritize([], [event], [], [], DEFAULT_WEIGHTS);
+      const item = result.today.find(i => i.source === 'calendar');
+      expect(item).toBeDefined();
+      expect(item!.score).toBeGreaterThanOrEqual(12);
+    });
+  });
+
+  describe('uncommitted work scoring', () => {
+    it('should classify 3+ days uncommitted as NOW', () => {
+      const signal: GitSignal = {
+        repo: 'myrepo',
+        branch: 'main',
+        uncommittedFiles: 5,
+        lastCommitAge: 80, // hours (>72 = 3+ days)
+        staleBranches: [],
+        openPRs: [],
+      };
+
+      const result = prioritize([signal], [], [], [], DEFAULT_WEIGHTS);
+      const item = result.now.find(i => i.source === 'git');
+      expect(item).toBeDefined();
+      expect(item!.score).toBeGreaterThanOrEqual(25);
+    });
+
+    it('should classify 1-3 days uncommitted as TODAY', () => {
+      const signal: GitSignal = {
+        repo: 'myrepo',
+        branch: 'main',
+        uncommittedFiles: 3,
+        lastCommitAge: 36, // hours (>24, <72)
+        staleBranches: [],
+        openPRs: [],
+      };
+
+      const result = prioritize([signal], [], [], [], DEFAULT_WEIGHTS);
+      const item = result.today.find(i => i.source === 'git');
+      expect(item).toBeDefined();
+      expect(item!.score).toBeGreaterThanOrEqual(12);
+    });
+  });
+
+  describe('label pattern matching', () => {
+    it('should not match p1 in p10 label', () => {
+      const p10 = makePR({ number: 1, ageDays: 10, labels: ['p10-backlog'] });
+      const p1 = makePR({ number: 2, ageDays: 10, labels: ['P1-important'] });
+
+      const result = prioritize(
+        [makeGitSignal('repo', [p10, p1])],
+        [], [], [], DEFAULT_WEIGHTS
+      );
+
+      const allItems = [...result.now, ...result.today];
+      const p10Item = allItems.find(i => i.label.includes('#1'));
+      const p1Item = allItems.find(i => i.label.includes('#2'));
+
+      // p10 should not get the P1 boost
+      // p1 should get P1 boost (+10)
+      expect(p1Item).toBeDefined();
+      expect(p1Item!.score).toBe(16); // 6 + 10
+      // p10 with no matching pattern = just age score
+      if (p10Item) {
+        expect(p10Item.score).toBe(6); // just age, no boost
+      }
+    });
+  });
 });

@@ -49,7 +49,9 @@ function getLabelBoost(labels: string[]): number {
   for (const label of labels) {
     const lower = label.toLowerCase();
     for (const { pattern, boost } of LABEL_BOOSTS) {
-      if (lower.includes(pattern) && boost > maxBoost) {
+      // Word-boundary match: "p1" matches "p1-important" but not "p10"
+      const re = new RegExp(`(^|[^a-z0-9])${pattern}($|[^a-z0-9])`);
+      if (re.test(lower) && boost > maxBoost) {
         maxBoost = boost;
       }
     }
@@ -159,27 +161,27 @@ function scoreRepoWork(signal: GitSignal): CandidateItem | null {
     `${signal.uncommittedFiles} uncommitted file${signal.uncommittedFiles > 1 ? "s" : ""}`
   );
 
-  // Staleness of uncommitted work
+  // Staleness of uncommitted work (scaled to new range)
   const days = Math.round(signal.lastCommitAge / 24);
   let reason = "Uncommitted changes detected.";
   if (signal.lastCommitAge > 72) {
-    score += 9; // 3+ days uncommitted = NOW
+    score += 28; // 3+ days uncommitted = NOW
     details.push(`last commit ${days}d ago`);
     reason = `Uncommitted work for ${days} days. Commit or stash.`;
   } else if (signal.lastCommitAge > 24) {
-    score += 6;
+    score += 18; // 1-3 days = TODAY
     details.push(`last commit ${days}d ago`);
     reason = `Uncommitted work for ${days} days. Commit or stash.`;
   } else if (signal.lastCommitAge > 4) {
     const hours = Math.round(signal.lastCommitAge);
-    score += 3;
+    score += 8; // 4+ hours = low TODAY
     details.push(`last touched ${hours}h ago`);
     reason = `Uncommitted work for ${hours} hours. Commit or stash.`;
   } else {
-    score += 1;
+    score += 3;
   }
 
-  const priority: Priority = score >= 8 ? "now" : score >= 4 ? "today" : "later";
+  const priority: Priority = score >= 25 ? "now" : score >= 12 ? "today" : "later";
 
   return {
     priority,
@@ -202,17 +204,20 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
   let score = 0;
   let reason = "Upcoming calendar event.";
 
-  if (event.minutesUntilStart <= 60 && event.minutesUntilStart > 0) {
-    score += 10;
-    reason = `Starting in ${event.minutesUntilStart} minutes.`;
-  } else if (event.minutesUntilStart <= 0 && event.minutesUntilStart > -15) {
-    score += 10; // Happening now
+  if (event.minutesUntilStart <= 0 && event.minutesUntilStart > -15) {
+    score += 30; // Happening now = always NOW
     reason = "Happening now.";
+  } else if (event.minutesUntilStart <= 30) {
+    score += 28; // <30 min = NOW
+    reason = `Starting in ${event.minutesUntilStart} minutes.`;
+  } else if (event.minutesUntilStart <= 60) {
+    score += 20; // <60 min = TODAY (high)
+    reason = `Starting in ${event.minutesUntilStart} minutes.`;
   } else {
-    score += 5;
+    score += 14; // >60 min = TODAY (low)
   }
 
-  const priority: Priority = score >= 8 ? "now" : "today";
+  const priority: Priority = score >= 25 ? "now" : "today";
 
   let timeLabel: string;
   if (event.minutesUntilStart <= 0) {
