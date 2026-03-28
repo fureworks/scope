@@ -139,6 +139,13 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
     details.push("priority label");
   }
 
+  // APPROVED + MERGEABLE boost — free value waiting to be captured
+  const approvedBoost = pr.reviewDecision === "APPROVED" && !pr.hasConflicts ? 20 : 0;
+  if (approvedBoost > 0) {
+    score += approvedBoost;
+    details.push("approved, ready to merge");
+  }
+
   let reason = "Needs attention.";
   if (reviewPoints > agePoints && reviewPoints >= ciPoints && reviewPoints >= conflictPoints) {
     if (pr.ageDays > 5) {
@@ -156,6 +163,8 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
     reason = "CI is failing. Fix or close.";
   } else if (conflictPoints > 0) {
     reason = "Merge conflicts detected. Rebase or close.";
+  } else if (approvedBoost > 0) {
+    reason = "Approved and ready to merge. Ship it.";
   }
 
   // Updated thresholds for wider score range
