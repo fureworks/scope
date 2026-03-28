@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Command } from "commander";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8"));
 import { todayCommand } from "./cli/today.js";
 import { switchCommand } from "./cli/switch.js";
 import { contextCommand } from "./cli/context.js";
@@ -22,7 +28,7 @@ const program = new Command();
 program
   .name("scope")
   .description("Personal ops CLI — focus on what matters.")
-  .version("0.2.0");
+  .version(pkg.version);
 
 program
   .command("init")
