@@ -3,7 +3,7 @@ import { loadConfig, configExists } from "../store/config.js";
 import { getTimeContext, loadSnapshot, saveSnapshot } from "../store/snapshot.js";
 import { scanAllRepos } from "../sources/git.js";
 import { getCalendarToday } from "../sources/calendar.js";
-import { scanAssignedIssues } from "../sources/issues.js";
+import { scanAssignedIssues, scanAllRepoIssues } from "../sources/issues.js";
 import { prioritize } from "../engine/prioritize.js";
 
 interface TodayOptions {
@@ -48,15 +48,29 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
 
   const events = calendarEvents?.events ?? [];
   const freeBlocks = calendarEvents?.freeBlocks ?? [];
-  const issueScan = await scanAssignedIssues();
+  // Scan issues from watched repos + assigned issues
+  const [repoIssues, issueScan] = await Promise.all([
+    scanAllRepoIssues(config.repos),
+    scanAssignedIssues(),
+  ]);
   if (!issueScan.available) {
     console.log(
       chalk.dim("  ⚠ GitHub issues not available. Install/auth gh to enable issue signals.\n")
     );
   }
 
+  // Merge repo issues with @me issues, dedup by number+repo
+  const issueKey = (i: { number: number; repo: string }) => `${i.repo}#${i.number}`;
+  const seen = new Set<string>();
+  const allIssues = [...repoIssues, ...issueScan.issues].filter((issue) => {
+    const key = issueKey(issue);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
   // Prioritize
-  const result = prioritize(gitSignals, events, freeBlocks, issueScan.issues, config.weights);
+  const result = prioritize(gitSignals, events, freeBlocks, allIssues, config.weights);
 
   const timeContext = getTimeContext();
 
