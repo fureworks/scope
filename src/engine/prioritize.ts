@@ -398,6 +398,16 @@ export function prioritize(
     }
     // Recalculate priority tier after weight adjustment
     item.priority = item.score >= 25 ? "now" : item.score >= 12 ? "today" : "later";
+
+    // P0/critical/blocker floor: never lower than TODAY
+    if (item.priority === "later" && item.detail?.includes("priority label")) {
+      const hasHighPriorityLabel = (item.source === "pr" || item.source === "issue") &&
+        item.detail?.match(/\b(P0|critical|blocker|security|compliance)\b/i);
+      if (hasHighPriorityLabel) {
+        item.priority = "today";
+        item.score = Math.max(item.score, 12);
+      }
+    }
   }
 
   // Sort by score descending
