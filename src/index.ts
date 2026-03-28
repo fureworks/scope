@@ -14,6 +14,8 @@ import { muteCommand, snoozeCommand } from "./cli/snooze.js";
 import { planCommand } from "./cli/plan.js";
 import { initCommand } from "./cli/init.js";
 import { tuneCommand } from "./cli/tune.js";
+import { cleanCommand } from "./cli/clean.js";
+import { diffCommand } from "./cli/diff.js";
 
 const program = new Command();
 
@@ -100,6 +102,19 @@ program
   .option("--reset", "Reset weights to defaults")
   .option("--config", "Open config in $EDITOR")
   .action(tuneCommand);
+
+program
+  .command("clean")
+  .description("Suggest stale branch cleanup across repos")
+  .option("--json", "Output as JSON")
+  .option("--dry", "List only, no cleanup suggestions")
+  .action(cleanCommand);
+
+program
+  .command("diff")
+  .description("Show what changed since this morning's snapshot")
+  .option("--json", "Output as JSON")
+  .action(diffCommand);
 
 program
   .command("plan")
