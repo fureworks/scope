@@ -7,6 +7,7 @@ import { ScoringWeights, DEFAULT_WEIGHTS } from "../store/config.js";
 export type Priority = "now" | "today" | "later";
 
 export interface ScoredItem {
+  id: string; // machine-readable: "pr:repo#N", "issue:repo#N", "git:repo", "cal:title"
   priority: Priority;
   score: number;
   emoji: string;
@@ -90,6 +91,7 @@ function scoreMyPR(pr: PRInfo, repoName: string): CandidateItem | null {
     priority,
     score,
     emoji: pr.reviewDecision === "CHANGES_REQUESTED" ? "🔴" : "🟢",
+    id: `mypr:${repoName}#${pr.number}`,
     label: `Your PR #${pr.number} on ${repoName}`,
     detail: `${pr.title} — ${details.join(", ")}`,
     reason,
@@ -181,6 +183,7 @@ function scorePR(pr: PRInfo, repoName: string): CandidateItem {
     priority,
     score,
     emoji: priority === "now" ? "🔴" : "🟡",
+    id: `pr:${repoName}#${pr.number}`,
     label: `PR #${pr.number} on ${repoName}`,
     detail: `${pr.title} — ${details.join(", ")}`,
     reason,
@@ -227,6 +230,7 @@ function scoreRepoWork(signal: GitSignal): CandidateItem | null {
     priority,
     score,
     emoji: priority === "now" ? "🔴" : "🟡",
+    id: `git:${signal.repo}`,
     label: `${signal.repo}`,
     detail: details.join(", "),
     reason,
@@ -275,6 +279,7 @@ function scoreCalendarEvent(event: CalendarEvent): ScoredItem | null {
     priority,
     score,
     emoji: "🔴",
+    id: `cal:${event.title.replace(/\s+/g, "-").toLowerCase()}`,
     label: `Meeting: ${event.title}`,
     detail: timeLabel,
     reason,
@@ -323,6 +328,7 @@ function scoreIssue(issue: IssueSignal): CandidateItem {
     priority,
     score,
     emoji: "📋",
+    id: `issue:${issue.repo}#${issue.number}`,
     label: `Issue #${issue.number} on ${issue.repo}`,
     detail: `${issue.title}${labels}${details.length > 0 ? ` — ${details.join(", ")}` : ""}`,
     reason,
