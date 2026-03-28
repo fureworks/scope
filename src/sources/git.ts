@@ -65,9 +65,12 @@ export async function scanRepo(repoPath: string): Promise<GitSignal | null> {
       const branches = await git.branch(["-a", "--sort=-committerdate"]);
       const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60 * 1000;
 
+      const protectedBranches = new Set(["main", "master", "develop", "dev", "staging", "production"]);
+
       for (const branchName of branches.all) {
         if (branchName === branch) continue;
         if (branchName.startsWith("remotes/")) continue;
+        if (protectedBranches.has(branchName)) continue;
 
         try {
           const branchLog = await git.log({
