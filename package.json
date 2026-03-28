@@ -1,6 +1,6 @@
 {
   "name": "@fureworks/scope",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Personal ops CLI — focus on what matters",
   "type": "module",
   "bin": {
