@@ -116,6 +116,52 @@ export async function getTodayPRActivity(repoPath: string): Promise<PRActivity |
   }
 }
 
+export interface GitHubActivity {
+  repo: string;
+  prReviews: number;
+  issueComments: number;
+  prComments: number;
+}
+
+export async function getTodayGitHubActivity(repoPath: string): Promise<GitHubActivity | null> {
+  const repoName = repoPath.split("/").pop() || repoPath;
+
+  try {
+    const { exec } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const execAsync = promisify(exec);
+    const today = new Date().toISOString().split("T")[0];
+
+    let prReviews = 0;
+    let issueComments = 0;
+    let prComments = 0;
+
+    // Count PR reviews submitted today
+    try {
+      const { stdout } = await execAsync(
+        `gh api "repos/{owner}/{repo}/pulls/comments?since=${today}T00:00:00Z&per_page=100" --jq 'length'`,
+        { cwd: repoPath, encoding: "utf-8", timeout: 10000 }
+      );
+      prComments = parseInt(stdout.trim(), 10) || 0;
+    } catch { /* gh api not available or rate limited */ }
+
+    // Count issue comments today
+    try {
+      const { stdout } = await execAsync(
+        `gh api "repos/{owner}/{repo}/issues/comments?since=${today}T00:00:00Z&per_page=100" --jq 'length'`,
+        { cwd: repoPath, encoding: "utf-8", timeout: 10000 }
+      );
+      issueComments = parseInt(stdout.trim(), 10) || 0;
+    } catch { /* gh api not available or rate limited */ }
+
+    if (prReviews === 0 && issueComments === 0 && prComments === 0) return null;
+
+    return { repo: repoName, prReviews, issueComments, prComments };
+  } catch {
+    return null;
+  }
+}
+
 export async function getTodayIssueActivity(repoPath: string): Promise<IssueActivity | null> {
   const repoName = repoPath.split("/").pop() || repoPath;
 
