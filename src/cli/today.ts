@@ -74,8 +74,9 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
 
   const timeContext = getTimeContext();
 
-  // Save a morning snapshot for scope review/progress checks.
-  if (timeContext === "morning") {
+  // Save snapshot on first call of the day (regardless of time)
+  const existingSnapshot = loadSnapshot();
+  if (!existingSnapshot) {
     saveSnapshot(result.now, result.today);
   }
 

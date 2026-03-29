@@ -1,8 +1,9 @@
 import chalk from "chalk";
-import { loadSnapshot, DaySnapshot } from "../store/snapshot.js";
+import { loadSnapshot, saveSnapshot } from "../store/snapshot.js";
 import { loadConfig, configExists } from "../store/config.js";
 import { scanAllRepos } from "../sources/git.js";
 import { scanAssignedIssues } from "../sources/issues.js";
+import { scanAllRepoIssues } from "../sources/issues.js";
 import { prioritize } from "../engine/prioritize.js";
 
 interface DiffOptions {
@@ -17,12 +18,16 @@ export async function diffCommand(options: DiffOptions): Promise<void> {
     process.exit(1);
   }
 
-  const snapshot = loadSnapshot();
+  let snapshot = loadSnapshot();
   if (!snapshot) {
-    console.log(
-      chalk.yellow("  No morning snapshot found. Run `scope today` first to create one.\n")
-    );
-    process.exit(1);
+    // Auto-create snapshot on first call if none exists
+    const config = loadConfig();
+    const autoSignals = await scanAllRepos(config.repos);
+    const autoIssues = await scanAssignedIssues();
+    const autoResult = prioritize(autoSignals, [], [], autoIssues.issues, config.weights);
+    saveSnapshot(autoResult.now, autoResult.today);
+    console.log(chalk.dim("  No morning snapshot found. Created one now. Run diff again later to see changes.\n"));
+    return;
   }
 
   const config = loadConfig();

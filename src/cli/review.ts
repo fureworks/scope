@@ -3,8 +3,8 @@ import { loadConfig, configExists } from "../store/config.js";
 import { loadSnapshot } from "../store/snapshot.js";
 import { scanAllRepos } from "../sources/git.js";
 import { scanAssignedIssues } from "../sources/issues.js";
-import { getTodayCommits, getTodayPRActivity, getTodayIssueActivity } from "../sources/activity.js";
-import type { RepoActivity, PRActivity, IssueActivity } from "../sources/activity.js";
+import { getTodayCommits, getTodayPRActivity, getTodayIssueActivity, getTodayGitHubActivity } from "../sources/activity.js";
+import type { RepoActivity, PRActivity, IssueActivity, GitHubActivity } from "../sources/activity.js";
 
 interface ReviewOptions {
   json?: boolean;
@@ -38,16 +38,19 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
   const commitActivities: RepoActivity[] = [];
   const prActivities: PRActivity[] = [];
   const issueActivities: IssueActivity[] = [];
+  const ghActivities: GitHubActivity[] = [];
 
   for (const repoPath of config.repos) {
-    const [commits, prs, issues] = await Promise.all([
+    const [commits, prs, issues, ghActivity] = await Promise.all([
       getTodayCommits(repoPath),
       getTodayPRActivity(repoPath),
       getTodayIssueActivity(repoPath),
+      getTodayGitHubActivity(repoPath),
     ]);
     if (commits && commits.commitsToday > 0) commitActivities.push(commits);
     if (prs) prActivities.push(prs);
     if (issues) issueActivities.push(issues);
+    if (ghActivity) ghActivities.push(ghActivity);
   }
 
   // Build "done" items
@@ -77,6 +80,16 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
   for (const issue of issueActivities) {
     for (const c of issue.closed) {
       done.push(`Issue #${c.number} closed on ${issue.repo} — ${c.title}`);
+    }
+  }
+
+  // GitHub activity (comments, reviews)
+  for (const gh of ghActivities) {
+    const parts: string[] = [];
+    if (gh.prComments > 0) parts.push(`${gh.prComments} PR comment${gh.prComments > 1 ? "s" : ""}`);
+    if (gh.issueComments > 0) parts.push(`${gh.issueComments} issue comment${gh.issueComments > 1 ? "s" : ""}`);
+    if (parts.length > 0) {
+      done.push(`${parts.join(", ")} on ${gh.repo}`);
     }
   }
 
