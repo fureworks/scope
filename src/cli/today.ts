@@ -3,7 +3,7 @@ import { loadConfig, configExists } from "../store/config.js";
 import { getTimeContext, loadSnapshot, saveSnapshot } from "../store/snapshot.js";
 import { scanAllRepos } from "../sources/git.js";
 import { getCalendarToday } from "../sources/calendar.js";
-import { scanAssignedIssues, scanAllRepoIssues } from "../sources/issues.js";
+import { mergeIssueSignals, scanAssignedIssues, scanAllRepoIssues } from "../sources/issues.js";
 import { prioritize } from "../engine/prioritize.js";
 
 interface TodayOptions {
@@ -59,15 +59,7 @@ export async function todayCommand(options: TodayOptions): Promise<void> {
     );
   }
 
-  // Merge repo issues with @me issues, dedup by number+repo
-  const issueKey = (i: { number: number; repo: string }) => `${i.repo}#${i.number}`;
-  const seen = new Set<string>();
-  const allIssues = [...repoIssues, ...issueScan.issues].filter((issue) => {
-    const key = issueKey(issue);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+  const allIssues = mergeIssueSignals(repoIssues, issueScan.issues);
 
   // Prioritize
   const result = prioritize(gitSignals, events, freeBlocks, allIssues, config.weights);

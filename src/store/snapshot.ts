@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { ScoredItem } from "../engine/prioritize.js";
+import type { ScoredItem } from "../engine/prioritize.js";
+import type { OutcomeTrackedItem } from "../engine/outcomes.js";
 
 const SNAPSHOTS_DIR = join(homedir(), ".scope", "snapshots");
 
@@ -13,8 +14,8 @@ function todayKey(): string {
 export interface DaySnapshot {
   date: string;
   timestamp: string;
-  now: ScoredItem[];
-  today: ScoredItem[];
+  now: OutcomeTrackedItem[];
+  today: OutcomeTrackedItem[];
 }
 
 export type TimeContext = "morning" | "midday" | "afternoon" | "evening";
@@ -27,13 +28,35 @@ export function getTimeContext(date: Date = new Date()): TimeContext {
   return "evening";
 }
 
+function stampItems(items: ScoredItem[], freshnessCheckedAt: string): OutcomeTrackedItem[] {
+  return items.map((item) => ({
+    ...item,
+    freshnessCheckedAt,
+  }));
+}
+
+function hydrateSnapshot(snapshot: DaySnapshot): DaySnapshot {
+  return {
+    ...snapshot,
+    now: snapshot.now.map((item) => ({
+      ...item,
+      freshnessCheckedAt: item.freshnessCheckedAt ?? snapshot.timestamp,
+    })),
+    today: snapshot.today.map((item) => ({
+      ...item,
+      freshnessCheckedAt: item.freshnessCheckedAt ?? snapshot.timestamp,
+    })),
+  };
+}
+
 export function saveSnapshot(now: ScoredItem[], today: ScoredItem[]): void {
   mkdirSync(SNAPSHOTS_DIR, { recursive: true });
+  const timestamp = new Date().toISOString();
   const snapshot: DaySnapshot = {
     date: todayKey(),
-    timestamp: new Date().toISOString(),
-    now,
-    today,
+    timestamp,
+    now: stampItems(now, timestamp),
+    today: stampItems(today, timestamp),
   };
   const file = join(SNAPSHOTS_DIR, `${todayKey()}.json`);
   writeFileSync(file, JSON.stringify(snapshot, null, 2));
@@ -43,7 +66,7 @@ export function loadSnapshot(): DaySnapshot | null {
   const file = join(SNAPSHOTS_DIR, `${todayKey()}.json`);
   if (!existsSync(file)) return null;
   try {
-    return JSON.parse(readFileSync(file, "utf-8")) as DaySnapshot;
+    return hydrateSnapshot(JSON.parse(readFileSync(file, "utf-8")) as DaySnapshot);
   } catch {
     return null;
   }
