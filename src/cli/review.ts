@@ -1,10 +1,12 @@
 import chalk from "chalk";
+import { compareSnapshotOutcomes, type SnapshotComparison } from "../engine/outcomes.js";
 import { loadConfig, configExists } from "../store/config.js";
 import { loadSnapshot } from "../store/snapshot.js";
 import { scanAllRepos } from "../sources/git.js";
-import { scanAssignedIssues } from "../sources/issues.js";
 import { getTodayCommits, getTodayPRActivity, getTodayIssueActivity, getTodayGitHubActivity } from "../sources/activity.js";
 import type { RepoActivity, PRActivity, IssueActivity, GitHubActivity } from "../sources/activity.js";
+import { mergeIssueSignals, scanAllRepoIssues, scanAssignedIssues } from "../sources/issues.js";
+import { prioritize } from "../engine/prioritize.js";
 
 interface ReviewOptions {
   json?: boolean;
@@ -15,6 +17,7 @@ interface ReviewOutput {
   stillOpen: string[];
   tomorrow: string[];
   stats: { doneCount: number; carryOverCount: number };
+  snapshotOutcomes?: SnapshotComparison;
 }
 
 export async function reviewCommand(options: ReviewOptions): Promise<void> {
@@ -34,7 +37,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Gather today's activity across all repos
   const commitActivities: RepoActivity[] = [];
   const prActivities: PRActivity[] = [];
   const issueActivities: IssueActivity[] = [];
@@ -53,7 +55,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     if (ghActivity) ghActivities.push(ghActivity);
   }
 
-  // Build "done" items
   const done: string[] = [];
 
   for (const activity of commitActivities) {
@@ -83,7 +84,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     }
   }
 
-  // GitHub activity (comments, reviews)
   for (const gh of ghActivities) {
     const parts: string[] = [];
     if (gh.prComments > 0) parts.push(`${gh.prComments} PR comment${gh.prComments > 1 ? "s" : ""}`);
@@ -93,64 +93,46 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     }
   }
 
-  // Build "still open" — compare against morning snapshot
   const stillOpen: string[] = [];
   const snapshot = loadSnapshot();
+  let snapshotOutcomes: SnapshotComparison | undefined;
+
+  const currentSignals = await scanAllRepos(config.repos);
+  const [repoIssues, assignedIssueScan] = await Promise.all([
+    scanAllRepoIssues(config.repos),
+    scanAssignedIssues(),
+  ]);
+  const currentIssues = mergeIssueSignals(repoIssues, assignedIssueScan.issues);
 
   if (snapshot) {
-    // Get current state of repos
-    const currentSignals = await scanAllRepos(config.repos);
-    const currentIssues = await scanAssignedIssues();
+    const currentResult = prioritize(currentSignals, [], [], currentIssues, config.weights);
+    snapshotOutcomes = await compareSnapshotOutcomes({
+      snapshotItems: [...snapshot.now, ...snapshot.today],
+      snapshotTime: snapshot.timestamp,
+      currentItems: [...currentResult.now, ...currentResult.today],
+      gitSignals: currentSignals,
+      currentIssues,
+      repoPaths: config.repos,
+    });
 
-    // Check which morning NOW/TODAY items are still unresolved
-    const morningItems = [...snapshot.now, ...snapshot.today];
-
-    for (const item of morningItems) {
-      if (item.source === "calendar") continue; // Meetings are done once past
-
+    for (const item of snapshotOutcomes.persisted) {
+      if (item.source === "calendar") continue;
       if (item.source === "git") {
-        // Check if repo still has uncommitted work
         const signal = currentSignals.find((s) => s.repo === item.label);
         if (signal && signal.uncommittedFiles > 0) {
           stillOpen.push(`${item.label} — ${signal.uncommittedFiles} uncommitted file${signal.uncommittedFiles > 1 ? "s" : ""}`);
         }
+        continue;
       }
 
-      if (item.source === "pr") {
-        // Check if PR is still open
-        const prMatch = item.label.match(/PR #(\d+) on (.+)/);
-        if (prMatch) {
-          const prNum = parseInt(prMatch[1], 10);
-          const repoName = prMatch[2];
-          const signal = currentSignals.find((s) => s.repo === repoName);
-          if (signal) {
-            const prStillOpen = signal.openPRs.find((p) => p.number === prNum);
-            if (prStillOpen) {
-              stillOpen.push(`${item.label} — ${item.detail}`);
-            }
-          }
-        }
-      }
-
-      if (item.source === "issue") {
-        // Check if issue is still in the open list
-        const issueMatch = item.label.match(/Issue #(\d+)/);
-        if (issueMatch) {
-          const issueNum = parseInt(issueMatch[1], 10);
-          const stillExists = currentIssues.issues.find((i) => i.number === issueNum);
-          if (stillExists) {
-            stillOpen.push(`${item.label} — still open`);
-          }
-        }
+      if (item.source === "pr" || item.source === "issue") {
+        stillOpen.push(`${item.label} — ${item.detail}`);
       }
     }
   }
 
-  // Build "tomorrow" suggestions
   const tomorrow: string[] = [];
 
-  // Stale PRs that need attention
-  const currentSignals = await scanAllRepos(config.repos);
   for (const signal of currentSignals) {
     for (const pr of signal.openPRs) {
       if (pr.ageDays > 5) {
@@ -159,9 +141,7 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     }
   }
 
-  // Stale issues
-  const currentIssues = await scanAssignedIssues();
-  const staleIssues = currentIssues.issues.filter((i) => i.ageDays > 7);
+  const staleIssues = currentIssues.filter((i) => i.ageDays > 7);
   if (staleIssues.length > 0) {
     tomorrow.push(`${staleIssues.length} issue${staleIssues.length > 1 ? "s" : ""} trending stale across repos`);
   }
@@ -171,9 +151,8 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     carryOverCount: stillOpen.length,
   };
 
-  const output: ReviewOutput = { done, stillOpen, tomorrow, stats };
+  const output: ReviewOutput = { done, stillOpen, tomorrow, stats, snapshotOutcomes };
 
-  // Output
   if (options.json) {
     console.log(JSON.stringify(output, null, 2));
     return;
@@ -181,12 +160,11 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
 
   console.log("");
 
-  if (done.length === 0 && stillOpen.length === 0) {
+  if (done.length === 0 && stillOpen.length === 0 && !snapshotOutcomes) {
     console.log(chalk.dim("  Quiet day. No activity detected across watched repos.\n"));
     return;
   }
 
-  // DONE TODAY
   if (done.length > 0) {
     console.log(chalk.bold("  DONE TODAY"));
     console.log(chalk.dim("  ──────────"));
@@ -196,7 +174,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     console.log("");
   }
 
-  // STILL OPEN
   if (stillOpen.length > 0) {
     console.log(chalk.bold("  STILL OPEN"));
     console.log(chalk.dim("  ──────────"));
@@ -206,7 +183,29 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     console.log("");
   }
 
-  // TOMORROW
+  if (snapshotOutcomes) {
+    const outcomeSections: Array<{ title: string; line: string; items: typeof snapshotOutcomes.shipped }> = [
+      { title: "  SHIPPED SINCE SNAPSHOT", line: "  ─────────────────────", items: snapshotOutcomes.shipped },
+      { title: "  COVERED BY OPEN PR", line: "  ──────────────────", items: snapshotOutcomes.coveredByOpenPr },
+      { title: "  TRIAGED OFF NOW", line: "  ───────────────", items: snapshotOutcomes.triagedOffNow },
+      { title: "  WAITING ON OWNER", line: "  ────────────────", items: snapshotOutcomes.waitingOwnerDecision },
+      { title: "  WAITING ON INFRA", line: "  ────────────────", items: snapshotOutcomes.waitingInfra },
+    ];
+
+    for (const section of outcomeSections) {
+      if (section.items.length === 0) continue;
+      console.log(chalk.bold(section.title));
+      console.log(chalk.dim(section.line));
+      for (const item of section.items) {
+        console.log(`  ${chalk.green("✓")} ${item.label}`);
+        if (item.outcomeReason) {
+          console.log(`     ${chalk.dim(item.outcomeReason)}`);
+        }
+      }
+      console.log("");
+    }
+  }
+
   if (tomorrow.length > 0) {
     console.log(chalk.bold("  TOMORROW"));
     console.log(chalk.dim("  ────────"));
@@ -216,7 +215,6 @@ export async function reviewCommand(options: ReviewOptions): Promise<void> {
     console.log("");
   }
 
-  // Summary line
   console.log(
     chalk.dim(
       `  ─────────────\n  ${stats.doneCount} item${stats.doneCount !== 1 ? "s" : ""} done · ${stats.carryOverCount} carrying over\n`

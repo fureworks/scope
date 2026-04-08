@@ -12,6 +12,21 @@ export interface IssueScanResult {
   issues: IssueSignal[];
 }
 
+function normalizeRepoKey(repo: string): string {
+  const parts = repo.split("/").filter(Boolean);
+  return parts[parts.length - 1] || repo;
+}
+
+export function mergeIssueSignals(...issueSets: IssueSignal[][]): IssueSignal[] {
+  const seen = new Set<string>();
+  return issueSets.flat().filter((issue) => {
+    const key = `${normalizeRepoKey(issue.repo)}#${issue.number}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function scanRepoIssues(repoPath: string): Promise<IssueSignal[]> {
   try {
     const { exec } = await import("node:child_process");
