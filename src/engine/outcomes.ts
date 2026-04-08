@@ -22,7 +22,6 @@ export interface OutcomeTrackedItem extends ScoredItem {
   coveredByPrNumber?: number;
   blockedByType?: BlockedByType;
   blockedByName?: string;
-  freshnessCheckedAt?: string;
 }
 
 export interface SnapshotComparison {

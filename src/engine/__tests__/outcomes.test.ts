@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import type { ScoredItem } from "../prioritize.js";
 import { compareSnapshotOutcomes } from "../outcomes.js";
 
+function baseItem(): Pick<
+  ScoredItem,
+  "scoreBreakdown" | "whySurfaced" | "coveredByOpenPr" | "blocked" | "freshnessCheckedAt" | "attentionLane"
+> {
+  return {
+    scoreBreakdown: {
+      staleness: 0,
+      blocking: 0,
+      labels: 0,
+      mergeReady: 0,
+      timePressure: 0,
+      effortMatch: 0,
+      weightMultiplier: 1,
+      weightedScore: 0,
+    },
+    whySurfaced: ["test fixture"],
+    coveredByOpenPr: false,
+    blocked: false,
+    freshnessCheckedAt: "2026-04-08T00:00:00.000Z",
+    attentionLane: "investigate",
+  };
+}
+
 function makeIssueItem(id: string, label = "Issue #12 on scope"): ScoredItem {
   return {
     id,
@@ -13,6 +36,7 @@ function makeIssueItem(id: string, label = "Issue #12 on scope"): ScoredItem {
     reason: "Needs attention.",
     confidence: "high",
     source: "issue",
+    ...baseItem(),
   };
 }
 
@@ -27,6 +51,7 @@ function makePrItem(id: string, label = "PR #7 on scope"): ScoredItem {
     reason: "Needs attention.",
     confidence: "high",
     source: "pr",
+    ...baseItem(),
   };
 }
 
