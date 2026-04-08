@@ -153,6 +153,43 @@ describe('prioritize', () => {
     });
   });
 
+  describe('ops-radar metadata', () => {
+    it('should expose machine-readable advisory metadata on surfaced items', () => {
+      const pr = makePR({ number: 1, ageDays: 20, reviewRequested: true });
+
+      const result = prioritize(
+        [makeGitSignal('repo', [pr])],
+        [], [], [], DEFAULT_WEIGHTS
+      );
+
+      const item = result.now.find(i => i.label.includes('#1'));
+      expect(result.mode).toBe('ops-radar');
+      expect(result.advisory).toBe(true);
+      expect(result.generatedAt).toMatch(/T/);
+      expect(item).toBeDefined();
+      expect(item!.attentionLane).toBe('review');
+      expect(item!.whySurfaced).toContain('review requested');
+      expect(item!.scoreBreakdown.weightedScore).toBe(item!.score);
+      expect(item!.freshnessCheckedAt).toBe(result.generatedAt);
+    });
+
+    it('should mark issues covered by open PRs explicitly', () => {
+      const issue = makeIssue({ number: 42, repo: 'fureworks/scope', ageDays: 20 });
+      const pr = makePR({ number: 9, title: 'Fix scope issue', body: 'Closes #42', ageDays: 20 });
+
+      const result = prioritize(
+        [makeGitSignal('scope', [pr])],
+        [], [], [issue], DEFAULT_WEIGHTS
+      );
+
+      const allItems = [...result.now, ...result.today];
+      const item = allItems.find(i => i.source === 'issue');
+      expect(item).toBeDefined();
+      expect(item!.coveredByOpenPr).toBe(true);
+      expect(item!.whySurfaced.some((entry) => entry.includes('covered by open PR'))).toBe(true);
+    });
+  });
+
   describe('issue scoring', () => {
     it('should include issues in output', () => {
       const issue = makeIssue({ number: 42, ageDays: 20 });

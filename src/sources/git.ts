@@ -15,6 +15,7 @@ export interface PRInfo {
   number: number;
   title: string;
   url: string;
+  body?: string;
   ageDays: number;
   reviewRequested: boolean;
   reviewDecision: string; // APPROVED, REVIEW_REQUIRED, CHANGES_REQUESTED, or ""
@@ -120,7 +121,7 @@ async function getOpenPRs(repoPath: string): Promise<PRInfo[]> {
     const execAsync = promisify(exec);
 
     const { stdout } = await execAsync(
-      `gh pr list --json number,title,url,createdAt,reviewRequests,reviewDecision,statusCheckRollup,mergeable,labels --limit 10`,
+      `gh pr list --json number,title,url,body,createdAt,reviewRequests,reviewDecision,statusCheckRollup,mergeable,labels --limit 10`,
       {
         cwd: repoPath,
         encoding: "utf-8",
@@ -132,6 +133,7 @@ async function getOpenPRs(repoPath: string): Promise<PRInfo[]> {
       number: number;
       title: string;
       url: string;
+      body?: string;
       createdAt: string;
       reviewRequests: Array<{ login?: string }>;
       reviewDecision: string;
@@ -169,6 +171,7 @@ async function getOpenPRs(repoPath: string): Promise<PRInfo[]> {
         number: pr.number,
         title: pr.title,
         url: pr.url,
+        body: pr.body,
         ageDays: Math.round(ageDays * 10) / 10,
         reviewRequested,
         reviewDecision,
@@ -190,7 +193,7 @@ async function getMyPRs(repoPath: string): Promise<PRInfo[]> {
     const execAsync = promisify(exec);
 
     const { stdout } = await execAsync(
-      `gh pr list --author @me --state open --json number,title,url,createdAt,reviewRequests,reviewDecision,statusCheckRollup,mergeable,labels --limit 10`,
+      `gh pr list --author @me --state open --json number,title,url,body,createdAt,reviewRequests,reviewDecision,statusCheckRollup,mergeable,labels --limit 10`,
       {
         cwd: repoPath,
         encoding: "utf-8",
@@ -202,6 +205,7 @@ async function getMyPRs(repoPath: string): Promise<PRInfo[]> {
       number: number;
       title: string;
       url: string;
+      body?: string;
       createdAt: string;
       reviewRequests: Array<{ login?: string }>;
       reviewDecision: string;
@@ -232,6 +236,7 @@ async function getMyPRs(repoPath: string): Promise<PRInfo[]> {
         number: pr.number,
         title: pr.title,
         url: pr.url,
+        body: pr.body,
         ageDays: Math.round(ageDays * 10) / 10,
         reviewRequested:
           pr.reviewRequests.length > 0 ||
