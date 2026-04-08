@@ -38,7 +38,9 @@ This isn't about perfecting your workflow. It's about small habits that make Sco
 
 **Run `scope today` in the morning.** It saves a snapshot that `scope review` uses at end of day. No morning run = no carry-over comparison in the evening.
 
-**Don't fight the ranking.** If Scope says something is NOW and you disagree, that's useful information. Either the scoring needs tuning (`scope tune` in a future version), or you're avoiding something. Both are worth noticing.
+**Treat the ranking as ops radar.** If Scope says something is NOW and you disagree, that's useful information. Either the scoring needs tuning, or you're seeing buildability/context that Scope does not. Scope tells you what needs attention, not what must be built next.
+
+**Use `--json` for downstream tooling.** `scope today --json` exposes why an item surfaced, what lane it belongs to (`review`, `merge`, `nudge`, `investigate`), and whether it looks blocked or already covered by an open PR. That output is the handoff shape for a separate build selector.
 
 **Missing context is okay.** Scope works in degraded mode by design. No calendar? It still reads git. No `gh` CLI? It still shows uncommitted work. Start with what you have. Add integrations as they become useful.
 

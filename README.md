@@ -65,6 +65,8 @@ $ scope today
   Nothing else needs you today.
 ```
 
+Important: `scope today` is an ops radar, not a build queue. It tells you what needs attention. A downstream agent can decide what is actually buildable.
+
 ## Commands
 
 | Command | What it does |
@@ -146,10 +148,47 @@ Scope reads from external tools. All are optional — missing integrations reduc
 
 See [WORKFLOW.md](./WORKFLOW.md) for habits that make Scope's output better — commit often, assign yourself, use labels, block focus time.
 
+## Machine-readable ops-radar output
+
+`scope today --json` returns a stable advisory shape for downstream tools. Each surfaced item includes fields such as:
+
+- `score`
+- `scoreBreakdown`
+- `whySurfaced`
+- `repoMomentum`
+- `coveredByOpenPr`
+- `blocked`
+- `blockedReason`
+- `freshnessCheckedAt`
+- `attentionLane`
+
+Example:
+
+```json
+{
+  "mode": "ops-radar",
+  "advisory": true,
+  "generatedAt": "2026-04-08T04:00:00.000Z",
+  "now": [
+    {
+      "label": "PR #18 on scope",
+      "score": 27,
+      "whySurfaced": ["review requested", "open 6 days"],
+      "attentionLane": "review",
+      "coveredByOpenPr": false,
+      "blocked": false
+    }
+  ]
+}
+```
+
+Use this as awareness input, not as proof that something should be built next.
+
 ## Philosophy
 
 - **Zero manual input.** Scope reads. It doesn't ask you to enter data.
 - **Confident exclusion.** The value isn't what's shown — it's what's hidden and why.
+- **Advisory, not authoritative.** Scope is the ops radar. It should not pretend to be the nightly build selector.
 - **Degraded mode is fine.** Only have git? Scope works. Add calendar? Better. Each integration is additive.
 - **CLI-first, local-first.** No accounts, no cloud, no tracking.
 - **No AI (v1).** Deterministic rules-based scoring. Transparent and predictable.
